@@ -14,7 +14,7 @@ indent_mode=2
 
 [project]
 name=learning cpp
-base_path=/home/vision/dev/lcpp/
+base_path=/home/vision/dev/xdrc
 description=
 file_patterns=
 

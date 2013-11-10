@@ -1,0 +1,3 @@
+[submodule "src/boost"]
+	path = src/boost
+	url = git@eniac.uk.to:~/xdrc/boost.git

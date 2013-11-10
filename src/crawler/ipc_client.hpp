@@ -6,9 +6,12 @@
 #include <queue>
 #include <stdexcept>
 #include <system_error>
+#include <boost/lockfree/spsc_queue.hpp>    //ringbuffer
 
 #include "ipc_common.hpp"
 #include "page_data.hpp"
+
+#define BUFFER_MAX_SIZE     2048
 
 /**
  * provided by process calling contructor, to configure ipc connection
@@ -63,7 +66,8 @@ class ipc_client
 
     private:
     struct ipc_config cfg;
-
+    boost::lockfree::spsc_queue<struct queue_node_s, boost::lockfree::capacity<BUFFER_MAX_SIZE>> send_buffer;
+    boost::lockfree::spsc_queue<struct queue_node_s, boost::lockfree::capacity<BUFFER_MAX_SIZE>> get_buffer;
 
     //no actual IPC for current development stage
     std::queue<struct queue_node_s> dev_queue;
