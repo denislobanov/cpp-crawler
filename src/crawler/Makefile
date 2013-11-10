@@ -8,7 +8,7 @@ LDDFLAGS=$(shell curl-config --libs) $(shell pkg-config --libs $(DEPENDENCIES))
 COMMON_OBJECTS=netio.o parser.o robots_txt.o database.o cache.o memory_mgr.o
 WORKER_OBJECTS=ipc_client.o crawler_worker.o
 MASTER_OBJECTS=crawler_master.o
-UNIT_TESTS=test_netio test_parser test_crawler test_robots_txt test_cache test_database test_memory_mgr test_ipc_client
+UNIT_TESTS=test_netio test_parser test_crawler_worker test_robots_txt test_cache test_database test_memory_mgr test_ipc_client
 
 all: crawler_worker crawler_master
 

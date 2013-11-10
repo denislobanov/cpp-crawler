@@ -9,7 +9,7 @@ all: $(SUBSYSTEMS)
 $(SUBSYSTEMS): boost
 	echo "Building $@"
 	$(foreach dir, $(SUBSYSTEMS), mkdir -p $(BUILD_DIR)/$(dir))
-    $(MAKE) $(PARALLEL_MAKE) -C src/$@
+	$(MAKE) $(PARALLEL_MAKE) -C $(SRC_DIR)/$@
 
 boost:
 	echo "Building Boost"
@@ -18,3 +18,7 @@ boost:
 	./bootstrap.sh --prefix=$(BUILD_DIR)/boost --with-libraries=system
 	./b2 install
 	echo "Done."
+
+clean:
+	rm -rf build
+	$(foreach comp, $(SUBSYSTEMS), $(MAKE) $(PARALLEL_MAKE) -C $(SRC_DIR)/$(comp) clean)

@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <system_error>
 #include <boost/lockfree/spsc_queue.hpp>    //ringbuffer
+#include <boost/asio.hpp>
 
 #include "ipc_common.hpp"
 #include "page_data.hpp"
@@ -19,6 +20,7 @@
  */
 struct ipc_config {
     unsigned int get_buff;  //size to fill get_buffer (during syncs)
+    std::string master_address;
 };
 
 struct sync_data {
@@ -66,12 +68,13 @@ class ipc_client
 
     private:
     struct ipc_config cfg;
+    boost::asio::io_service ipc_service;
+    boost::asio::ip::tcp::socket* cnc_socket;       //bidirectional cnc
+    boost::asio::ip::tcp::socket* get_socket;      //get data from master
+    boost::asio::ip::tcp::socket* send_socket;      //send data to master
+
     boost::lockfree::spsc_queue<struct queue_node_s, boost::lockfree::capacity<BUFFER_MAX_SIZE>> send_buffer;
     boost::lockfree::spsc_queue<struct queue_node_s, boost::lockfree::capacity<BUFFER_MAX_SIZE>> get_buffer;
-
-    //no actual IPC for current development stage
-    std::queue<struct queue_node_s> dev_queue;
-    std::mutex queue_lock;
 };
 
 #endif

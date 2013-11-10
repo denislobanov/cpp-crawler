@@ -3,6 +3,10 @@
 
 #include <glibmm/ustring.h>
 
+#define CNC_SERVICE_NAME "worker_cnc"
+#define TO_WORKER_SERVICE_NAME "work_in"
+#define FROM_WORKER_SERVICE_NAME "work_out"
+
 /**
  * status of crawler_worker
  */
@@ -21,11 +25,15 @@ enum worker_status {
 enum worker_intruction {
     START,          //begin processing data from work queue
     STOP,           //finish current processing and idle
-    CAPABILITIES,   //report capabilities
-    CONFIGURE,      //configure worker
-    GET_CONF,       //report current config
     KILL,           //die now
+    STATUS,         //report current status
     NO_INST         //no instruction
+};
+
+enum master_instruction {
+    BOOTSTRAP,      //provide initial configuration
+    GET_WORK,       //request work items
+    NO_INST         //no request, checking in
 };
 
 /**
