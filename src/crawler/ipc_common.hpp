@@ -26,9 +26,8 @@ enum worker_status {
 enum cnc_instruction {
     w_register,     //worker requests config
     w_get_work,     //worker requests work
-    m_config,       //master sent config data
+    w_send_work,    //worker sending completed work
     m_send_status,  //master requests worker status
-    m_url_data      //master sent work
 };
 
 /**
@@ -80,21 +79,22 @@ struct capabilities {
 
 /**
  * Communication structure
- *  - homologates sending/recieving of CnC & URL data as well as intstructions
+ *  - homologates sending/recieving of CnC & URL data as well as instructions
  */
 struct ipc_message {
     enum message_type {
         instruction,    //cnc_instruction
         cnc_data,       //worker_config or capabilities depending on previous cnc_instruction
         queue_node      //queue_node_s
-    };
+    } type;
 
-    union data {
+    union ipc_data {
         cnc_instruction instruction;
+        worker_status status;
         struct worker_config config;
         struct capabilities cap;
         struct queue_node_s node;
-    };
+    } data;
 };
 
 #endif

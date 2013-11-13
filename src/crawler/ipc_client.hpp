@@ -19,20 +19,17 @@
  * user supplied/config file in production
  */
 struct ipc_config {
-    unsigned int get_buff;  //size to fill get_buffer (during syncs)
+    unsigned int work_prebuff;      //queue nodes to fetch when get_buffer < get_buffer_min
+    unsigned int get_buffer_min;    //min size of get_buffer before fetching data
+    unsigned int work_presend;      //max size of send_buffer before draining
     std::string master_address;
 };
 
-struct sync_data {
-    worker_status status;
-    struct capabilities cap;
-    struct worker_config config;
-};
+using boost::asio::ip::tcp;
 
 class ipc_client
 {
     public:
-    ipc_client(void);
     ipc_client(struct ipc_config& config);
     ~ipc_client(void);
 
@@ -41,8 +38,6 @@ class ipc_client
      *  buffered variant writes to a fifo ringbuffer first, which is
      *  asyncronasly sycronised with master depending on config
      */
-    //~ bool send_item(struct queue_node_s& data) throw(std::system_error);
-    //dev only
     void send_item(struct queue_node_s& data);
 
     /**
@@ -56,25 +51,43 @@ class ipc_client
     struct queue_node_s get_item(void) throw(std::underflow_error);
 
     /**
-     * syncronises worker to master.
-     *  sync_data must be fully set to properly handle all requests from master
-     *  send queue is fully (size at time of call) flushed to master
-     *  config.get_buff worth of queue_node_s items retrieved from master
-     *
-     * returns worker_intstruction as from master or NO_INST
-     * will throw system_error if IPC failed
+     * will block whilst waiting for config
      */
-    worker_intruction sync(struct sync_data& data) throw(std::underflow_error);
+    struct worker_config get_config(void);
 
     private:
     struct ipc_config cfg;
-    boost::asio::io_service ipc_service;
-    boost::asio::ip::tcp::socket* cnc_socket;       //bidirectional cnc
-    boost::asio::ip::tcp::socket* get_socket;      //get data from master
-    boost::asio::ip::tcp::socket* send_socket;      //send data to master
+    std::thread* ipc_thread_h;
+    worker_status status;
+    struct worker_config config_from_master;
+    struct ipc_message data;
+    
+    //state variables for controlling background thread
+    std::atomic<bool> connected;
+    std::atomic<bool> running;
+    std::atomic<bool> next_task;
+    std::atomic<unsigned int> get_buffer_size;
+    std::atomic<unsigned int> send_buffer_size;
 
+    //ipc
+    boost::asio::io_service ipc_service;
+    tcp::resolver resolver_;
+    tcp::socket socket_;
+
+    //buffers
+    boost::lockfree::queue<struct cnc_instruction> task_queue;
     boost::lockfree::spsc_queue<struct queue_node_s, boost::lockfree::capacity<BUFFER_MAX_SIZE>> send_buffer;
     boost::lockfree::spsc_queue<struct queue_node_s, boost::lockfree::capacity<BUFFER_MAX_SIZE>> get_buffer;
+
+    void ipc_thread(void);
+    void noop(const boost::system::error_code& err);
+    void get_from_master(const boost::system::error_code& err);
+    void send_to_master(const boost::system::error_code& err);
+    void process_from_master(const boost::system::error_code& err);
+    void handle_resolved(const boost::system::error_code& err, tcp::resolver::iterator endpoint_iterator);
+    void handle_connected(const boost::system::error_code& err);
+    void process_task(cnc_instruction& task);
+    
 };
 
 #endif
