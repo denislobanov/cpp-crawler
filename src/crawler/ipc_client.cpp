@@ -33,7 +33,7 @@ ipc_client::~ipc_client(void)
     //tell thread to shut down
     running = false;
 
-    ipc_thread_h.join();
+    task_thread.join();
 }
 
 ipc_client::ipc_client(struct ipc_config& config)
@@ -50,12 +50,13 @@ ipc_client::ipc_client(struct ipc_config& config)
     config_from_master = {0};
     data = {0};
 
-    ipc_thread_h = new ipc_thread();
+    task_thread = std::thread(ipc_thread);
+    task_thread.detach();
 }
 
 void ipc_client::ipc_thread(void) throw(std::invalid_argument): resolver_(ipc_service), socket_(ipc_service)
 {
-    tcp::resolver::query query(cfg.master_address, MASTER_SERVICE_NAME);
+    tcp::resolver::query query(cfg.master_address, MASTER_SERVICE_NAME, MASTER_SERVICE_PORT);
     resolver_.async_resolve(query,
         boost::bind(&ipc_client::handle_resolved, this,
             boost::asio::placeholders::error,

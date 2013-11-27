@@ -5,8 +5,8 @@
 
 #include "page_data.hpp"
 
-#define MASTER_SERVICE_NAME "master_in"
-#define WORKER_SERVICE_NAME "worker_in"
+#define MASTER_SERVICE_NAME "crawler_cnc"
+#define MASTER_SERVICE_PORT 23331
 
 /**
  * status of crawler_worker

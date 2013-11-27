@@ -8,6 +8,7 @@
 #include <system_error>
 #include <boost/lockfree/spsc_queue.hpp>    //ringbuffer
 #include <boost/asio.hpp>
+//#include <memory> //unique_ptr
 
 #include "ipc_common.hpp"
 #include "page_data.hpp"
@@ -57,7 +58,7 @@ class ipc_client
 
     private:
     struct ipc_config cfg;
-    std::thread* ipc_thread_h;
+    std::thread task_thread;
     worker_status status;
     struct worker_config config_from_master;
     struct ipc_message data;
