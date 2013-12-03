@@ -5,7 +5,6 @@
 #include <mutex>
 #include <queue>
 #include <stdexcept>
-#include <system_error>
 #include <boost/lockfree/spsc_queue.hpp>    //ringbuffer
 #include <boost/asio.hpp>
 //#include <memory> //unique_ptr
@@ -24,6 +23,17 @@ struct ipc_config {
     unsigned int get_buffer_min;    //min size of get_buffer before fetching data
     unsigned int work_presend;      //max size of send_buffer before draining
     std::string master_address;
+};
+
+/**
+ * generic exception interface to ipc_client
+ */
+struct ipc_exception: std::exception {
+    std::string message;
+    const char* what() const noexcept
+    {
+        return message.c_str();
+    }
 };
 
 using boost::asio::ip::tcp;

@@ -54,13 +54,23 @@ ipc_client::ipc_client(struct ipc_config& config)
     task_thread.detach();
 }
 
-void ipc_client::ipc_thread(void) throw(std::invalid_argument): resolver_(ipc_service), socket_(ipc_service)
+void ipc_client::ipc_thread(void) throw(std::exception): resolver_(ipc_service), socket_(ipc_service)
 {
     tcp::resolver::query query(cfg.master_address, MASTER_SERVICE_NAME, MASTER_SERVICE_PORT);
     resolver_.async_resolve(query,
-        boost::bind(&ipc_client::handle_resolved, this,
-            boost::asio::placeholders::error,
-            boost::asio::placeholders::iterator));
+        [this](boost::asio::placeholders::error ec, boost::asio::placeholders::iterator it)
+        {
+            if(!ec) {
+                dbg_1<<"resolved master\n";
+                dbg<<"connecting to: "<<it->endpoint()<<std::endl;
+                boost::asio::async_connect(socket_, it,
+                    boost::bind(&ipc_client::handle_connected, this,
+                        boost::asio::placeholders::error));
+            } else {
+                ipc_exception e = {.message = "async_resolve error: "<<ec.message()<<std::endl);};
+                throw e;
+            }
+        }
 
     ipc_service.run();
     running = true;
@@ -101,6 +111,18 @@ void ipc_client::ipc_thread(void) throw(std::invalid_argument): resolver_(ipc_se
     }
 }
 
+//connected to master, begin processing/scheduling tasks
+void ipc_client::handle_connected(const boost::system::error_code& ec) throw(std::exception)
+{
+    if(!ec) {
+        connected = true;
+        dbg<<"connected.\n";
+    } else {
+        ipc_exception e = {.message = "async_connect error in handle except: "<<ec.message()<<std::endl;};
+        throw e;
+    }
+}
+
 void ipc_client::process_task(cnc_instruction& task)
 {
     struct ipc_message message = {0};
@@ -112,9 +134,8 @@ void ipc_client::process_task(cnc_instruction& task)
                 .data.instruction = task;
             };
 
-            boost::asio::async_write(socket_, message,
-                boost::bind(&ipc_client::get_from_master, this,
-                    boost::asio::placeholders::error));
+            boost::asio::async_write(socket_,
+                boost::asio::buffer(dynamic_cast<void*>message, si)
             break;
 
         case w_send_work:
@@ -145,6 +166,34 @@ void ipc_client::process_task(cnc_instruction& task)
 
     next_task = false;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 //send a request to master. get request response
 void ipc_client::get_from_master(const boost::system::error_code& err) throw(std::system_error)
@@ -241,31 +290,6 @@ void ipc_client::noop(const boost::system::error_code& err) throw(std::system_er
         next_task = true;
 
     dbg<<"noop done\n";
-}
-
-//master address resolved, connect
-void ipc_client::handle_resolved(const boost::system::error_code& err, tcp::resolver::iterator endpoint_iterator) throw(std::invalid_argument)
-{
-    if(err)
-        throw std::invalid_argument("handle_resolve: "<<err.message()<<std::endl);
-
-    else
-        boost::asio::async_connect(socket_, endpoint_iterator,
-            boost::bind(&ipc_client::handle_connected, this,
-                boost::asio::placeholders::error));
-
-    dbg<<"resolved master address\n";
-}
-
-//connected to master, begin processing/scheduling tasks
-void ipc_client::handle_connected(const boost::system::error_code& err) throw(std::system_error)
-{
-    if(err)
-        throw std::system_error("handle_connect: "<<err.message()<<std::endl);
-    else
-        connected = true;
-
-    dbg<<"connected.\n";
 }
 
 //public intreface
