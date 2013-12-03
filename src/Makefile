@@ -1,6 +1,7 @@
 CC=clang++
 CPPFLAGS=-Wall -std=c++11
 DEPENDENCIES=glibmm-2.4 libxml-2.0 glib-2.0
+OUT_DIR="."
 
 INCLUDES=$(shell pkg-config --cflags $(DEPENDENCIES))
 LDDFLAGS=$(shell curl-config --libs) $(shell pkg-config --libs $(DEPENDENCIES))
@@ -13,6 +14,10 @@ UNIT_TESTS=test_netio test_parser test_crawler_worker test_robots_txt test_cache
 all: crawler_worker crawler_master
 
 tests: $(UNIT_TESTS)
+	ifneq ($(OUT_DIR), ".")
+		@echo "copying tests"
+		$(foreach ut, $(UNIT_TESTS), mv $(ut) $(OUT_DIR)/$(ut))
+	endif
 
 clean:
 	rm -f $(UNIT_TESTS) *.o
