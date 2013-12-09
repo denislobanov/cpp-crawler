@@ -13,6 +13,7 @@
 #include "page_data.hpp"
 
 #define BUFFER_MAX_SIZE     2048
+#define SERVICE_GRANUALITY  1       //seconds
 
 /**
  * provided by process calling contructor, to configure ipc connection
@@ -34,6 +35,22 @@ struct ipc_exception: std::exception {
     {
         return message.c_str();
     }
+};
+
+/**
+ * background thread state
+ */
+enum thread_state_e {
+    stop,
+    run,
+    connected,
+    next_task,
+    buffs_serv
+};
+
+struct node_buffer {
+    std::atomic<unsigned int> size;
+    boost::lockfree::spsc_queue<struct queue_node_s, boost::lockfree::capacity<BUFFER_MAX_SIZE>> data;
 };
 
 using boost::asio::ip::tcp;
@@ -71,24 +88,20 @@ class ipc_client
     std::thread task_thread;
     worker_status status;
     struct worker_config config_from_master;
-    struct ipc_message data;
+    struct ipc_message message;
     
-    //state variables for controlling background thread
-    std::atomic<bool> connected;
-    std::atomic<bool> running;
-    std::atomic<bool> next_task;
-    std::atomic<unsigned int> get_buffer_size;
-    std::atomic<unsigned int> send_buffer_size;
+    //controlling background thread
+    boost::lockfree::queue<struct cnc_instruction> task_queue;
+    std::atomic<thread_state_e> thread_state;
 
     //ipc
     boost::asio::io_service ipc_service;
     tcp::resolver resolver_;
     tcp::socket socket_;
-
-    //buffers
-    boost::lockfree::queue<struct cnc_instruction> task_queue;
-    boost::lockfree::spsc_queue<struct queue_node_s, boost::lockfree::capacity<BUFFER_MAX_SIZE>> send_buffer;
-    boost::lockfree::spsc_queue<struct queue_node_s, boost::lockfree::capacity<BUFFER_MAX_SIZE>> get_buffer;
+    
+    //internal work queues
+    struct node_buffer get_buffer;
+    struct node_buffer send_buffer;
 
     void ipc_thread(void);
     void noop(const boost::system::error_code& err);

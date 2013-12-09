@@ -95,6 +95,13 @@ struct ipc_message {
         struct capabilities cap;
         struct queue_node_s node;
     } data;
+
+    template<class Archive>
+    void serialize(Archive& ar, const unsigned int version)
+    {
+        ar & type;
+        ar & data;
+    }
 };
 
 #endif
