@@ -2,6 +2,7 @@
 #define IPC_COMMON_H
 
 #include <glibmm/ustring.h>
+#include <type_traits>
 
 #include "page_data.hpp"
 
@@ -81,20 +82,26 @@ struct capabilities {
  * Communication structure
  *  - homologates sending/recieving of CnC & URL data as well as instructions
  */
-struct ipc_message {
-    enum message_type {
-        instruction,    //cnc_instruction
-        cnc_data,       //worker_config or capabilities depending on previous cnc_instruction
-        queue_node      //queue_node_s
-    } type;
+enum message_type {
+    instruction,    //cnc_instruction
+    cnc_data,       //worker_config or capabilities depending on previous cnc_instruction
+    queue_node      //queue_node_s
+};
 
-    union ipc_data {
-        cnc_instruction instruction;
-        worker_status status;
-        struct worker_config config;
-        struct capabilities cap;
-        struct queue_node_s node;
-    } data;
+union ipc_data {
+    cnc_instruction instruction;
+    worker_status status;
+    std::aligned_storage<sizeof(struct worker_config),
+        alignof(struct worker_config)>::type config;
+    std::aligned_storage<sizeof(struct capabilities),
+        alignof(struct capabilities)>::type cap;
+    std::aligned_storage<sizeof(struct queue_node_s),
+        alignof(struct queue_node_s)>::type node;
+};
+
+struct ipc_message {
+    message_type type;
+    ipc_data data;
 
     template<class Archive>
     void serialize(Archive& ar, const unsigned int version)

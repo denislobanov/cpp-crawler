@@ -5,6 +5,8 @@
 #include <mutex>
 #include <queue>
 #include <stdexcept>
+#include <atomic>
+#include <thread>
 #include <boost/lockfree/spsc_queue.hpp>    //ringbuffer
 #include <boost/asio.hpp>
 //#include <memory> //unique_ptr
@@ -35,6 +37,7 @@ struct ipc_exception: std::exception {
     {
         return message.c_str();
     }
+    ipc_exception(std::string s): message(s) {};
 };
 
 /**
@@ -66,7 +69,7 @@ class ipc_client
      *  buffered variant writes to a fifo ringbuffer first, which is
      *  asyncronasly sycronised with master depending on config
      */
-    void send_item(struct queue_node_s& data);
+    bool send_item(struct queue_node_s& data);
 
     /**
      * gets a new page to crawl from get queue. queue is filled up to
@@ -74,14 +77,16 @@ class ipc_client
      *
      * development version uses internal (non ipc) work queue
      *
-     *  will throw underrun_exception if queue is empty
+     *  will throw exception if queue is empty
      */
-    struct queue_node_s get_item(void) throw(std::underflow_error);
+    struct queue_node_s get_item(void) throw(std::exception);
 
     /**
      * will block whilst waiting for config
      */
     struct worker_config get_config(void);
+
+    void set_status(worker_status& s);
 
     private:
     struct ipc_config cfg;
@@ -91,7 +96,7 @@ class ipc_client
     struct ipc_message message;
     
     //controlling background thread
-    boost::lockfree::queue<struct cnc_instruction> task_queue;
+    boost::lockfree::queue<cnc_instruction> task_queue;
     std::atomic<thread_state_e> thread_state;
 
     //ipc
@@ -103,14 +108,12 @@ class ipc_client
     struct node_buffer get_buffer;
     struct node_buffer send_buffer;
 
-    void ipc_thread(void);
-    void noop(const boost::system::error_code& err);
-    void get_from_master(const boost::system::error_code& err);
-    void send_to_master(const boost::system::error_code& err);
-    void process_from_master(const boost::system::error_code& err);
-    void handle_resolved(const boost::system::error_code& err, tcp::resolver::iterator endpoint_iterator);
-    void handle_connected(const boost::system::error_code& err);
-    void process_task(cnc_instruction& task);
+    void handle_connected(const boost::system::error_code& ec) throw(std::exception);
+    void ipc_thread(void) throw(std::exception);
+    void process_task(cnc_instruction task) throw(std::exception);
+    void send_to_master(const boost::system::error_code& ec, std::size_t) throw(std::exception);
+    void read_from_master(const boost::system::error_code& ec) throw(std::exception);
+    
     
 };
 

@@ -2,11 +2,14 @@
 #include <mutex>
 #include <queue>
 #include <stdexcept>
-#include <system_error>
+#include <atomic>
+#include <thread>
 #include <boost/lockfree/spsc_queue.hpp>    //ringbuffer
 #include <boost/lockfree/queue.hpp>         //task queue
+#include <boost/bind.hpp>                   //boost::bind
 #include <boost/asio.hpp>                   //all ipc
 #include <unistd.h>                         //sleep()
+#include <string>                           //to_string
 
 #include "ipc_client.hpp"
 #include "ipc_common.hpp"
@@ -28,27 +31,26 @@
 
 using boost::asio::ip::tcp;
 
-ipc_client::~ipc_client(void)
-{
-    //tell thread to shut down
-    thread_state = stop;
-
-    task_thread.join();
-}
-
-ipc_client::ipc_client(struct ipc_config& config)
+ipc_client::ipc_client(struct ipc_config& config): resolver_(ipc_service), socket_(ipc_service)
 {
     cfg = config;
     thread_state = stop;
 
     //init internal tracking of worker
     status = IDLE;
-    config_from_master = {0};
-    data = {0};
+    config_from_master = {};
+    message = {};
 
     //launch background service thread
-    task_thread = std::thread(ipc_thread);
+    task_thread = std::thread(&ipc_client::ipc_thread, this);
     task_thread.detach();
+}
+
+ipc_client::~ipc_client(void)
+{
+    //tell thread to shut down
+    thread_state = stop;
+    task_thread.join();
 }
 
 //connected to master, begin processing/scheduling tasks
@@ -58,18 +60,18 @@ void ipc_client::handle_connected(const boost::system::error_code& ec) throw(std
         thread_state = connected;
         dbg<<"connected.\n";
     } else {
-        ipc_exception e = {.message = "async_connect error in handle except: "<<ec.message()<<std::endl;};
+        ipc_exception e("async_connect error in handle except: "+ec.message());
         throw e;
     }
 }
 
 //this thread runs in the background for the life of the object, handeling
 //all the ipc and making sure node buffers are drained/filled etc
-void ipc_client::ipc_thread(void) throw(std::exception): resolver_(ipc_service), socket_(ipc_service)
+void ipc_client::ipc_thread(void) throw(std::exception)
 {
-    tcp::resolver::query query(cfg.master_address, MASTER_SERVICE_NAME, MASTER_SERVICE_PORT);
+    tcp::resolver::query query(tcp::v4(), cfg.master_address, MASTER_SERVICE_NAME);
     resolver_.async_resolve(query,
-        [this](boost::asio::placeholders::error ec, boost::asio::placeholders::iterator it)
+        [this](boost::system::error_code ec, tcp::resolver::iterator it)
         {
             if(!ec) {
                 dbg_1<<"resolved master\n";
@@ -78,10 +80,10 @@ void ipc_client::ipc_thread(void) throw(std::exception): resolver_(ipc_service),
                     boost::bind(&ipc_client::handle_connected, this,
                         boost::asio::placeholders::error));
             } else {
-                ipc_exception e = {.message = "async_resolve error: "<<ec.message()<<std::endl);};
+                ipc_exception e("async_resolve error: "+ec.message());
                 throw e;
             }
-        }
+        });
 
     dbg<<"launching boost service\n";
     ipc_service.run();
@@ -91,7 +93,7 @@ void ipc_client::ipc_thread(void) throw(std::exception): resolver_(ipc_service),
         if(thread_state >= connected) {
             //prevents spamming of master and makes sure follow up replies/reads occure in order
             if(thread_state == next_task) {
-                cnc_instruction task = {0};
+                cnc_instruction task = {};
                 while(!task_queue.pop(task)) {
                     process_task(task);
                 }
@@ -99,7 +101,7 @@ void ipc_client::ipc_thread(void) throw(std::exception): resolver_(ipc_service),
 
             //TEST: this may need to be a seperate bool ctrl
             if(thread_state < buffs_serv) {
-                thread_state == buffs_serv;
+                thread_state = buffs_serv;
 
                 //copy current size as other threads will always modify it
                 unsigned int s = get_buffer.size;
@@ -126,29 +128,28 @@ void ipc_client::ipc_thread(void) throw(std::exception): resolver_(ipc_service),
 }
 
 //there must not be any outstanding reads when this function enters
-void ipc_client::process_task(cnc_instruction& task)
+void ipc_client::process_task(cnc_instruction task) throw(std::exception)
 {
-    message = {0};
     switch(task) {
     case w_register:
     case w_get_work:
     {
         message = {
-            .type = instruction;
-            .data.instruction = task;
+            .type = instruction,
+            .data.instruction = task
         };
-
-        boost::asio::async_write(socket_, boost::asio::buffer(message),
-            [this](boost::system::error_code ec)
+        
+        boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
+            [this, task](boost::system::error_code ec, std::size_t)
             {
                 if(!ec) {
                     dbg<<"send message to master type ["<<task<<"]\n";
-                    boost::asio::async_read(socket_, boost::asio::buffer(message),
+                    boost::asio::async_read(socket_, boost::asio::buffer(&message, sizeof(message)),
                         boost::asio::transfer_all(),
                         boost::bind(&ipc_client::read_from_master, this,
                             boost::asio::placeholders::error));
                 } else {
-                    ipc_exception e = {.message = "process_task() failed to send to master: "<<ec.message()<<std::endl;};
+                    ipc_exception e("process_task() failed to send to master: "+ec.message());
                     throw e;
                 }
             });
@@ -157,12 +158,12 @@ void ipc_client::process_task(cnc_instruction& task)
 
     case w_send_work:
         message = {
-            .type = instruction;
-            .data.instruction = task;
+            .type = instruction,
+            .data.instruction = task
         };
 
         //dont use lambda here due to send_to_master complexity
-        boost::asio::async_write(socket_, boost::asio::buffer(message),
+        boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
             boost::bind(&ipc_client::send_to_master, this,
                 boost::asio::placeholders::error));
         break;
@@ -170,18 +171,18 @@ void ipc_client::process_task(cnc_instruction& task)
     case m_send_status:
     {
         message = {
-            .type = cnc_data;
-            .data.status = status;
+            .type = cnc_data,
+            .data.status = status
         };
 
-        boost::asio::async_write(socket_, boost::asio::buffer(message)
-            [this](boost::system::error_code ec)
+        boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
+            [this, task](boost::system::error_code ec, std::size_t)
             {
                 if(!ec) {
                     dbg<<"send message to master type ["<<task<<"]\n";
                     thread_state = next_task;
                 } else {
-                    ipc_exception e = {.message = "process_task() failed to send m_send_status to master: "<<ec.message()<<std::endl;};
+                    ipc_exception e("process_task() failed to send m_send_status to master: "+ec.message());
                     throw e;
                 }
             });
@@ -190,7 +191,7 @@ void ipc_client::process_task(cnc_instruction& task)
 
     default:
     {
-        ipc_exception e = {.message = "task queue contains unknown or non-worker task! ("<<task.type<<")\n"};
+        ipc_exception e("task queue contains unknown or non-worker task! ("+std::to_string(task)+")\n");
         throw e;
     }
     }
@@ -199,29 +200,29 @@ void ipc_client::process_task(cnc_instruction& task)
 }
 
 //send data to master - will keep calling itself until send_buffer.size < cfg.work_presend
-void ipc_client::send_to_master(const boost::system::error_code& ec) throw(std::exception)
+void ipc_client::send_to_master(const boost::system::error_code& ec, std::size_t) throw(std::exception)
 {
     if(!ec) {
-        dbg<<"adding "
+        dbg_1<<"sending node to master\n";
         message = {
-            .type = queue_node;
-            .data.queue_node = {0};
+            .type = queue_node,
+            .data.node = {}
         };
 
         //do not completely drain the send_buffer to allow other tasks to be
         //completed (its always getting filled anyway)
         if(send_buffer.size > cfg.work_presend) {
-            send_buffer.data.pop(message.data.queue_node);
+            send_buffer.data.pop(message.data.node);
             --send_buffer.size;
-            boost::asio::async_write(socket_, boost::asio::buffer(message),
-                boost::bind(&ipc_client::send_to_master, this
+            boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
+                boost::bind(&ipc_client::send_to_master, this,
                     boost::asio::placeholders::error));
         } else {
             dbg<<"drained send_buffer\n";
             thread_state = next_task;
         }
     } else {
-        ipc_exception e = {.message = "send_to_master() failed to send queue_node to master: "<<ec.message()<<std::endl;};
+        ipc_exception e("send_to_master() failed to send queue_node to master: "+ec.message());
         throw e;
     }
 }
@@ -232,40 +233,40 @@ void ipc_client::read_from_master(const boost::system::error_code& ec) throw(std
     if(!ec) {
         switch(message.type) {
         case instruction:
-            dbg_1<<"got instruction from master ("<<message.data.instruction<<")\n";
+            dbg_1<<"got instruction from master ("+std::to_string(message.data.instruction)+")\n";
             task_queue.push(message.data.instruction);
             break;
 
         case cnc_data:
             dbg<<"got config data from master\n";
-            config_from_master = message.data.config;
+            config_from_master = reinterpret_cast<struct worker_config&>(message.data.config);
             break;
 
         case queue_node:
         {
-            dbg_2<<"get work queue node from master\n";
-            get_buffer.data.push(message.data.node);
+            dbg_1<<"get work queue node from master\n";
+            get_buffer.data.push(reinterpret_cast<struct queue_node_s&>(message.data.node));
             ++get_buffer.size;
 
             //loop until get_buffer is filled to avoid stalling crawler
             if(get_buffer.size < cfg.work_prebuff) {
-                dbg_2<<"asking for more work nodes ("<<get_buffer.size < cfg.work_prebuff<<")\n";
+                dbg_1<<"asking for more work nodes ("<<get_buffer.size<<" < "<<cfg.work_prebuff<<")\n";
                 message = {
-                    .type = instruction;
-                    .data.instruction = w_get_work;
+                    .type = instruction,
+                    .data.instruction = w_get_work
                 };
 
-                boost::asio::async_write(socket_, boost::asio::buffer(message),
-                    [this](boost::system::error_code ec)
+                boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
+                    [this](boost::system::error_code ec, std::size_t)
                     {
                         if(!ec) {
                             dbg_1<<"lambda read_from_master wrote w_get_work\n";
-                            boost::asio::async_read(socket_,boost::asio::buffer(message),
+                            boost::asio::async_read(socket_,boost::asio::buffer(&message, sizeof(message)),
                                 boost::bind(&ipc_client::read_from_master, this,
-                                    boost::placeholders::error));
+                                    boost::asio::placeholders::error));
                         } else {
-                            ipc_exception e = {.message="lambda read_from_master failed\
-                                to bind async_read - read_from_master: "<<ec.message()<<std::endl;};
+                            ipc_exception e("lambda read_from_master failed\
+                                to bind async_read - read_from_master: "+ec.message());
                                 throw e;
                         }
                     });
@@ -274,13 +275,13 @@ void ipc_client::read_from_master(const boost::system::error_code& ec) throw(std
         }
 
         default:
-            ipc_exception e = {.message="read_from_master: data has invalid type ("<<data.type<<")\n";};
+            ipc_exception e("read_from_master: message has invalid type ("+std::to_string(message.type)+")");
             throw e;
         }
 
         thread_state = next_task;
     } else {
-        ipc_exception e = {.message="read_from_master boost error: "<<ec.message()<<std::endl;};
+        ipc_exception e("read_from_master boost error: "+ec.message());
             throw e;
     }
 }
@@ -290,17 +291,23 @@ void ipc_client::read_from_master(const boost::system::error_code& ec) throw(std
 bool ipc_client::send_item(struct queue_node_s& data)
 {
     ++send_buffer.size;
-    return send_buffer.data.push(data);
+    bool r = send_buffer.data.push(data);
+    if(!r) {
+        ipc_exception e("failed to push data to send_buffer");
+        throw e;
+    }
+
+    return r;
 }
 
 //public interface
 //get item from get_buffer
 struct queue_node_s ipc_client::get_item(void) throw(std::exception)
 {
-    struct queue_node_s data = {0};
+    struct queue_node_s data = {};
 
     if(!get_buffer.data.pop(data)) {
-        ipc_exception e = {.message="get_buffer.data empty\n";};
+        ipc_exception e("get_buffer.data empty\n");
         throw e;
     }
 
@@ -316,10 +323,8 @@ struct worker_config ipc_client::get_config(void)
     cnc_instruction task = w_register;
     task_queue.push(task);
 
-    //block whilst waiting for configs
-    while(config_from_master == 0) {
-        sleep(1);
-    }
+    //FIXME: block whilst waiting for configs
+    sleep(1);
 
     return config_from_master;
 }
