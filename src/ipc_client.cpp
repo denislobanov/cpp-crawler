@@ -15,7 +15,7 @@
 #include "ipc_common.hpp"
 
 //Local defines
-#define DEBUG 1
+#define DEBUG 2
 
 #if defined(DEBUG)
     #define dbg std::cout<<__FILE__<<"("<<__LINE__<<"): "
@@ -134,11 +134,9 @@ void ipc_client::process_task(cnc_instruction task) throw(std::exception)
     case w_register:
     case w_get_work:
     {
-        message = {
-            .type = instruction,
-            .data.instruction = task
-        };
-        
+        message.type = instruction;
+        reinterpret_cast<cnc_instruction&>(message.data.instruction) = task;
+
         boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
             [this, task](boost::system::error_code ec, std::size_t)
             {
@@ -157,10 +155,8 @@ void ipc_client::process_task(cnc_instruction task) throw(std::exception)
     }
 
     case w_send_work:
-        message = {
-            .type = instruction,
-            .data.instruction = task
-        };
+        message.type = instruction;
+        reinterpret_cast<cnc_instruction&>(message.data.instruction) = task;
 
         //dont use lambda here due to send_to_master complexity
         boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
@@ -170,10 +166,8 @@ void ipc_client::process_task(cnc_instruction task) throw(std::exception)
 
     case m_send_status:
     {
-        message = {
-            .type = cnc_data,
-            .data.status = status
-        };
+        message.type = instruction;
+        reinterpret_cast<cnc_instruction&>(message.data.instruction) = task;
 
         boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
             [this, task](boost::system::error_code ec, std::size_t)
@@ -200,20 +194,22 @@ void ipc_client::process_task(cnc_instruction task) throw(std::exception)
 }
 
 //send data to master - will keep calling itself until send_buffer.size < cfg.work_presend
-void ipc_client::send_to_master(const boost::system::error_code& ec, std::size_t) throw(std::exception)
+void ipc_client::send_to_master(const boost::system::error_code& ec) throw(std::exception)
 {
     if(!ec) {
-        dbg_1<<"sending node to master\n";
+        dbg_1<<"sent node to master\n";
         message = {
             .type = queue_node,
-            .data.node = {}
+            .data = {}
         };
 
         //do not completely drain the send_buffer to allow other tasks to be
         //completed (its always getting filled anyway)
         if(send_buffer.size > cfg.work_presend) {
-            send_buffer.data.pop(message.data.node);
+            send_buffer.data.pop(reinterpret_cast<struct queue_node_s&>(message.data.node));
             --send_buffer.size;
+
+            dbg_1<<"sending node to master\n";
             boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
                 boost::bind(&ipc_client::send_to_master, this,
                     boost::asio::placeholders::error));
@@ -251,10 +247,8 @@ void ipc_client::read_from_master(const boost::system::error_code& ec) throw(std
             //loop until get_buffer is filled to avoid stalling crawler
             if(get_buffer.size < cfg.work_prebuff) {
                 dbg_1<<"asking for more work nodes ("<<get_buffer.size<<" < "<<cfg.work_prebuff<<")\n";
-                message = {
-                    .type = instruction,
-                    .data.instruction = w_get_work
-                };
+                message.type = instruction;
+                reinterpret_cast<cnc_instruction&>(message.data.instruction) = w_get_work;
 
                 boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
                     [this](boost::system::error_code ec, std::size_t)

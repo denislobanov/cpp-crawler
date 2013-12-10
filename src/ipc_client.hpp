@@ -94,7 +94,7 @@ class ipc_client
     worker_status status;
     struct worker_config config_from_master;
     struct ipc_message message;
-    
+
     //controlling background thread
     boost::lockfree::queue<cnc_instruction> task_queue;
     std::atomic<thread_state_e> thread_state;
@@ -103,7 +103,7 @@ class ipc_client
     boost::asio::io_service ipc_service;
     tcp::resolver resolver_;
     tcp::socket socket_;
-    
+
     //internal work queues
     struct node_buffer get_buffer;
     struct node_buffer send_buffer;
@@ -111,10 +111,8 @@ class ipc_client
     void handle_connected(const boost::system::error_code& ec) throw(std::exception);
     void ipc_thread(void) throw(std::exception);
     void process_task(cnc_instruction task) throw(std::exception);
-    void send_to_master(const boost::system::error_code& ec, std::size_t) throw(std::exception);
+    void send_to_master(const boost::system::error_code& ec) throw(std::exception);
     void read_from_master(const boost::system::error_code& ec) throw(std::exception);
-    
-    
 };
 
 #endif
