@@ -1,10 +1,11 @@
-CC=g++
+CC=clang++
 CPPFLAGS=-Wall -std=c++11
 DEPENDENCIES=glibmm-2.4 libxml-2.0 glib-2.0
 OUT_DIR="."
 
 INCLUDES=$(shell pkg-config --cflags $(DEPENDENCIES))
 LDDFLAGS=$(shell curl-config --libs) $(shell pkg-config --libs $(DEPENDENCIES))
+LIBRARIES=-lboost_system -lpthread
 
 COMMON_OBJECTS=netio.o parser.o robots_txt.o database.o cache.o memory_mgr.o
 WORKER_OBJECTS=ipc_client.o crawler_worker.o
@@ -22,15 +23,15 @@ tests: $(UNIT_TESTS)
 clean:
 	rm -f $(UNIT_TESTS) *.o
 
-crawler_worker: $(COMMON_OBJECTS) $(WORKER_OBJECTS)
+crawler_worker: $(COMMON_OBJECTS) $(WORKER_OBJECTS) $(LIBRARIES)
 	$(CC) $(LDDFLAGS) -o $@ $(COMMON_OBJECTS)
 
-crawler_master: $(COMMON_OBJECTS) $(MASTER_OBJECTS)
+crawler_master: $(COMMON_OBJECTS) $(MASTER_OBJECTS) $(LIBRARIES)
 	$(CC) $(LDDFLAGS) -o $@ $(COMMON_OBJECTS)
 
 $(UNIT_TESTS): $(COMMON_OBJECTS) $(WORKER_OBJECTS)
 	$(CC) $(CPPFLAGS) $(INCLUDES) -c $@.cpp
-	$(CC) $(LDDFLAGS) -o $@ $@.o $(COMMON_OBJECTS) $(WORKER_OBJECTS)
+	$(CC) $(LDDFLAGS) -o $@ $@.o $(COMMON_OBJECTS) $(WORKER_OBJECTS) $(LIBRARIES)
 
 %.o : %.cpp
 	$(CC) $(CPPFLAGS) $(INCLUDES) -c $<

@@ -2,203 +2,228 @@
 #include <sstream>
 #include <thread>
 #include <atomic>
+#include <boost/lockfree/spsc_queue.hpp>
+#include <boost/asio.hpp>
+#include <boost/bind.hpp>
 
+#include "ipc_common.hpp"
 #include "ipc_client.hpp"
 
 using std::cout;
+using std::cerr;
 using std::endl;
 using boost::asio::ip::tcp;
 
-//thread ctrl
-static std::atomic<bool> running = false;
-static std::atomic<bool> kill_threads = false;
+#define GET_SEND_LOOPS  10
 
-//global data (for async handlers)
-static unsigned int sent_data = 0;
-static unsigned int got_data = 0;
-static struct ipc_message data;
+//internal static data
+static std::atomic<bool> running;
 static boost::lockfree::spsc_queue<struct queue_node_s, boost::lockfree::capacity<BUFFER_MAX_SIZE>> node_buffer;
+static unsigned int nodes_sent = 0;
+
+//uut mock data
 static struct worker_config worker_test_cfg = {
-    .user_agent = "test_ipc_client";
-    .day_max_crawls = 5;
-    
-    .page_cache_max = 10;
-    .page_cache_res = 2;
-    .robots_cache_max = 3;
-    .robots_cache_res = 1;
+    .user_agent = "test_ipc_client",
+    .day_max_crawls = 5,
 
-    .db_path = "no db";
-    .parse_param = {0};
+    .page_cache_max = 10,
+    .page_cache_res = 2,
+    .robots_cache_max = 3,
+    .robots_cache_res = 1,
+
+    .db_path = "no db"
 };
-static tcp::socket socket;
+struct ipc_config test_cfg = {
+    .get_buffer_min = 2,
+    .work_presend = 2,
+    .master_address = "127.0.0.1"
+};
 
-
-//not sure on these two
-void send_thread(ipc_client& uut)
+//simple test server
+class test_server
 {
-    unsigned int test_credit = 0;
+    public:
+    test_server():
+        acceptor_(ipc_service, tcp::endpoint(tcp::v4(), MASTER_SERVICE_PORT)),
+        socket_(ipc_service)
+    {
+        cout<<"server: starting test server\n";
+        do_accept();
+        ipc_service.run();
+    }
 
-    while(!kill_threads) {
-        if(running) {
-            //generate test url
-            std::stringstream ss;
-            ss << "http://test_url.com/test_page_"<<test_credit<<".html";
+    ~test_server()
+    {
+        socket_.close();
+    }
 
-            //generate test node
-            struct queue_node_s test_node = {
-                .credit = test_credit;
-                .url = ss.str();
-            };
+    private:
+    boost::asio::io_service ipc_service;
+    tcp::acceptor acceptor_;
+    tcp::socket socket_;
+    struct ipc_message message;
 
-            //send test data to uut
-            uut.send_item(test_node);
-            cout<<"-->sent to uut url["<<test_node.url<<"] credit ["<<test_node.credit<<"]\n";
-            ++sent_data;
+    void do_accept(void)
+    {
+        acceptor_.async_accept(socket_,
+            [this](boost::system::error_code ec)
+            {
+                if(!ec) {
+                    cout<<"server: accepted connection from client, waiting for initial data..\n";
+                    boost::asio::async_read(socket_,
+                        boost::asio::buffer(&message, sizeof(message)),
+                        boost::bind(&test_server::read_handler, this,
+                            boost::asio::placeholders::error));
+                }
+            });
+    }
+
+    void read_handler(boost::system::error_code ec)
+    {
+        //we're going to spend most of our time here, so this is a good
+        //place to check for kill flags etc
+        if(!running) {
+            cout<<"server exiting\n";
+            return;
         }
 
-        std::this_thread::yield();
-    }
-}
-
-void get_thread(ipc_client& uut)
-{
-    while(!kill_threads) {
-        if(running) {
-            //drain uut
-            struct queue_node_s test_node = uut.get_item();
-            cout<<"<--got from uut url["<<test_node.url<<"] credit ["<<test_node.credit<<"]\n";
-            ++got_data;
-        }
-
-        std::this_thread::yield();
-    }
-}
-
-void write_finished(const boost::system::error_code& err) throw(std::system_error)
-{
-
-}
-
-void read_from_uut(const boost::system::error_code& err) throw(std::system_error)
-{
-    if(!err) {
-        switch(data.type) {
-        case instruction:
-        {
-            switch(data.data.instruction) {
-            case w_register:
-            {
-                //send config
-                data = {
-                    .type = cnc_data;
-                    .data.config = worker_test_cfg;
-                };
-                boost::asio::async_write(socket, data,
-                    boost::bind(write_finished, this, boost::asio::placeholders::error));
-                break;
-            }
-            case w_get_work:
-            {
-                //send from node_buffer
-                data.type = queue_node;
-                if(!node_buffer.pop(data.data.queue_node))
-                    throw std::system_error("get_buff buffer queue empty\n");
-                
-                boost::asio::async_write(socket, data,
-                    boost::bind(write_finished, this, boost::asio::placeholders::error));
+        if(!ec) {
+            switch(message.type) {
+            case instruction:
+                cout<<"recieved cnc_instruction from worker\n";
+                process_instruction(reinterpret_cast<cnc_instruction&>(message.data.instruction));
                 break;
 
-            case w_send_work:
-                //read to node_buffer
+            case queue_node:
+                cout<<"recieved queue_node from worker\n";
+                node_buffer.push(reinterpret_cast<struct queue_node_s&>(message.data.node));
+                boost::asio::async_read(socket_, boost::asio::buffer(&message, sizeof(message)),
+                    boost::bind(&test_server::read_handler, this,
+                        boost::asio::placeholders::error));
                 break;
 
             default:
-                cerr<<"unknown instruction ["<<data.data.instruction<<"] (got data type instruction["<<data.type<<"])\n";
-                break;
+                cout<<"unknown message.type from worker ("<<message.type<<")!\n";
+                exit(-1);
             }
-            
+        } else {
+            cerr<<"read_handler - boost error: "<<ec.message();
+            exit(-2);
+        }
+    }
+
+    void process_instruction(cnc_instruction task)
+    {
+        switch(task) {
+        case w_register:    //client wants config
+        {
+            cout<<"sending worker_config\n";
+            message.type = cnc_data;
+            reinterpret_cast<struct worker_config&>(message.data.config) = worker_test_cfg;
+
+            boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
+                [this](boost::system::error_code ec, std::size_t)
+                {
+                    if(!ec) {
+                        cout<<"write to client successful, waiting for data\n";
+                        boost::asio::async_read(socket_,
+                            boost::asio::buffer(&message, sizeof(message)),
+                            boost::bind(&test_server::read_handler, this,
+                                boost::asio::placeholders::error));
+                    } else {
+                        cerr<<"process_instruction::w_register::write lambda - boost error: "<<ec.message();
+                        exit(-2);
+                    }
+                });
             break;
         }
 
-        case queue_node:
-            cout<<"worker sent queue node\n";
-            //read to node_buffer
+        case w_get_work:    //client wants work
+        {
+            cout<<"sending "<<test_cfg.get_buffer_min<<" queue_node_s\n";
+            ++nodes_sent;
+            message.type = queue_node;
+            node_buffer.pop(reinterpret_cast<struct queue_node_s&>(message.data.node));
+
+            boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
+                boost::bind(&test_server::send_nodes, this,
+                    boost::asio::placeholders::error));
+            break;
+        }
+
+        case w_send_work:   //client sending completed work
+            cout<<"client about to send queue_node_s\n";
+            boost::asio::async_read(socket_, boost::asio::buffer(&message, sizeof(message)),
+                boost::bind(&test_server::read_handler, this,
+                    boost::asio::placeholders::error));
             break;
 
         default:
-            cerr<<"unknown data type ["<<data.type<<"]\n";
-            throw std::system_error("unknown data from master: "<<err.message()<<endl);
+            cout<<"client sent invalid instruction "<<task<<endl;
+            boost::asio::async_read(socket_, boost::asio::buffer(&message, sizeof(message)),
+                boost::bind(&test_server::read_handler, this,
+                    boost::asio::placeholders::error));
             break;
         }
-    } else {
-        cerr<<"boost::asio error: "<<err.message()<<endl;
     }
+
+    void send_nodes(const boost::system::error_code& ec)
+    {
+        if(!ec) {
+            if(nodes_sent < test_cfg.get_buffer_min) {
+                ++nodes_sent;
+                message.type = queue_node;
+                node_buffer.pop(reinterpret_cast<struct queue_node_s&>(message.data.node));
+
+                boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
+                    boost::bind(&test_server::send_nodes, this,
+                        boost::asio::placeholders::error));
+            } else {
+                cout<<"finished sending queue_node_s to worker\n";
+                boost::asio::async_read(socket_, boost::asio::buffer(&message, sizeof(message)),
+                    boost::bind(&test_server::read_handler, this,
+                        boost::asio::placeholders::error));
+            }
+        } else {
+            cerr<<"send_nodes - boost error: "<<ec.message();
+            exit(-2);
+        }
+    }
+};
+
+void run_server(void)
+{
+    test_server server;
+    cout<<"end of run_server()\n";
 }
 
 int main(void)
 {
-    //local ctrl
-    const unsigned int loops = 10;
-    std::thread st, gt;
-    boost::asio::io_service io_service;
-    struct ipc_config test_cfg = {
-        .work_prebuff = 2;
-        .get_buffer_min = 1;
-        .work_presend = 2;
-        .master_address = "127.0.0.1";
-    };
+    cout<<">initialising test_server\n";
+    running = true;
+    std::thread srv(run_server);
+    srv.detach();
 
-    //instantiate psuedo master    
-    try {
-        boost::asio::io_service io_service;
-        tcp::acceptor acceptor(io_service, tcp::endpoint(tcp::v4(), MASTER_SERVICE_PORT));
+    cout<<">initialising test_client\n";
+    ipc_client test_client(test_cfg);
 
-        socket(io_service);
-        acceptor.async_accept(socket,
-            [this](boost::system::error_code ec)
-            {
-                if(!ec) {
-                    //uut has connected. work in response mode only
-                    socket.async_read(socket, data,
-                        boost::asio::transfer_all(sizeof(data)),
-                        boost::bind(read_from_uut, this,
-                            boost::asio::placeholders::error));
-                }
-            }
-    } catch(exception& e) {
-        cerr<<e.what();
-        exit(-1);
+    cout<<">test_client getting config from server\n";
+    struct worker_config ret_wcfg = test_client.get_config();
+
+    cout<<">beggining send/get loop of "<<GET_SEND_LOOPS<<" items\n---\n";
+    for(unsigned int i = 0; i < GET_SEND_LOOPS; ++i) {
+        struct queue_node_s test_node = {.url = "test_url", .credit = i};
+        cout<<">sending test node, url=["<<test_node.url<<"] credit=["<<test_node.credit<<"]\n";
+        test_client.send_item(test_node);
+
+        //reinitialise test node = reset data
+        test_node = {};
+        cout<<">getting test node from client\n";
+        test_node = test_client.get_item();
+
+        cout<<">test_node url=["<<test_node.url<<"] credit=["<<test_node.credit<<"]\n";
     }
-
-    //instantiate client
-    ipc_client uut(test_cfg);
-
-    //threads sleep until running == true
-    st = std::thread(send_thread);
-    st.detatch();
-    gt = std::thread(get_thread);
-    gt.detatch();
-
-    cout<<"testing configuration retrieval.. ";
-    struct worker_config ret_wcfg = uut.get_config();
-
-    if(ret_wcfg == worker_test_cfg) {
-        cout<<"config matches\n";
-        running = true;
-    } else {
-        //end test
-        cout<<"config mismatch FAIL\n";
-        kill_threads = true;
-    }
-
-    if(running) {
-        
-    
-    
-
-    
-
-    
-
+    cout<<"\n---\n>done.\n";
+    running = false;
     return 0;
 }

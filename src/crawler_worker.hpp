@@ -48,7 +48,6 @@ class crawler_worker
     enum worker_status status;
     struct worker_config config;
     std::string data;
-    ipc_client ipc;
 
     //objects dynamically allocated based on config
     netio* netio_obj;

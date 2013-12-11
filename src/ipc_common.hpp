@@ -6,7 +6,7 @@
 
 #include "page_data.hpp"
 
-#define MASTER_SERVICE_NAME "crawler_cnc"
+#define MASTER_SERVICE_NAME "23331"
 #define MASTER_SERVICE_PORT 23331
 
 /**

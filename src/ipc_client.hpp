@@ -7,22 +7,20 @@
 #include <stdexcept>
 #include <atomic>
 #include <thread>
-#include <boost/lockfree/spsc_queue.hpp>    //ringbuffer
+#include <chrono>
+#include <boost/lockfree/queue.hpp>
 #include <boost/asio.hpp>
-//#include <memory> //unique_ptr
 
 #include "ipc_common.hpp"
 #include "page_data.hpp"
 
 #define BUFFER_MAX_SIZE     2048
-#define SERVICE_GRANUALITY  1       //seconds
-
+#define SERVICE_GRANUALITY  std::chrono::milliseconds(500)
 /**
  * provided by process calling contructor, to configure ipc connection
  * user supplied/config file in production
  */
 struct ipc_config {
-    unsigned int work_prebuff;      //queue nodes to fetch when get_buffer < get_buffer_min
     unsigned int get_buffer_min;    //min size of get_buffer before fetching data
     unsigned int work_presend;      //max size of send_buffer before draining
     std::string master_address;
@@ -47,13 +45,19 @@ enum thread_state_e {
     stop,
     run,
     connected,
-    next_task,
-    buffs_serv
+    next_task
+};
+
+enum data_state_e {
+    ready,
+    buffs_serv,
+    configured
 };
 
 struct node_buffer {
     std::atomic<unsigned int> size;
-    boost::lockfree::spsc_queue<struct queue_node_s, boost::lockfree::capacity<BUFFER_MAX_SIZE>> data;
+    std::queue<struct queue_node_s> data;
+    std::mutex lock;
 };
 
 using boost::asio::ip::tcp;
@@ -69,7 +73,7 @@ class ipc_client
      *  buffered variant writes to a fifo ringbuffer first, which is
      *  asyncronasly sycronised with master depending on config
      */
-    bool send_item(struct queue_node_s& data);
+    void send_item(struct queue_node_s& data);
 
     /**
      * gets a new page to crawl from get queue. queue is filled up to
@@ -96,8 +100,9 @@ class ipc_client
     struct ipc_message message;
 
     //controlling background thread
-    boost::lockfree::queue<cnc_instruction> task_queue;
+    boost::lockfree::queue<cnc_instruction, boost::lockfree::capacity<BUFFER_MAX_SIZE>> task_queue;
     std::atomic<thread_state_e> thread_state;
+    std::atomic<data_state_e> data_state;
 
     //ipc
     boost::asio::io_service ipc_service;

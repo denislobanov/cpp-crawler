@@ -17,9 +17,7 @@
 #include "memory_mgr.hpp"
 
 //Local defines
-#define DEBUG 0
-#define SEED_URL "http://xmlsoft.org"
-#define SEED_CREDIT 2048
+#define DEBUG 4
 
 #if defined(DEBUG)
     #define dbg std::cout<<__FILE__<<"("<<__LINE__<<"): "
@@ -53,11 +51,11 @@ crawler_worker::crawler_worker(std::vector<struct tagdb_s>& parse_param)
     mem_mgr = new memory_mgr(config.db_path, config.user_agent);
 
     //test seed to queue
-    dbg<<"seed url is: "<<SEED_URL<<" initial credit "<<SEED_CREDIT<<std::endl;
-    struct queue_node_s preseed_node;
-    preseed_node.url = SEED_URL;
-    preseed_node.credit = SEED_CREDIT;
-    ipc.send_item(preseed_node);
+    //~ dbg<<"seed url is: "<<SEED_URL<<" initial credit "<<SEED_CREDIT<<std::endl;
+    //~ struct queue_node_s preseed_node;
+    //~ preseed_node.url = SEED_URL;
+    //~ preseed_node.credit = SEED_CREDIT;
+    //~ ipc.send_item(preseed_node);
 }
 
 crawler_worker::crawler_worker(void)
@@ -83,6 +81,7 @@ size_t crawler_worker::root_domain(std::string& url)
 
 void crawler_worker::crawl(queue_node_s& work_item, struct page_data_s* page, robots_txt* robots)
 {
+#if 0
     //for dev just sleep. prod should put item back on work queue
     while(std::difftime(std::time(0), robots->last_visit) < robots->crawl_delay) {
         status = SLEEP;
@@ -167,10 +166,12 @@ void crawler_worker::crawl(queue_node_s& work_item, struct page_data_s* page, ro
             }
         }
     }
+#endif
 }
 
 void crawler_worker::dev_loop(int i) throw(std::underflow_error)
 {
+#if 0
     while(--i) {
         dbg<<"loops left: "<<i<<std::endl;
 
@@ -227,6 +228,7 @@ void crawler_worker::dev_loop(int i) throw(std::underflow_error)
     }
 
     status = IDLE;
+#endif
 }
 
 void crawler_worker::main_loop(void)
