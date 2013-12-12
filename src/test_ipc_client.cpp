@@ -90,7 +90,7 @@ class test_server
         if(!ec) {
             switch(message.type) {
             case instruction:
-                cout<<"recieved cnc_instruction ["<<message.data.instruction<<"] from worker\n";
+                cout<<"recieved cnc_instruction ["<<message.data.instruction<<"] size ["<<sizeof(message)<<"] from worker\n";
                 process_instruction(message.data.instruction);
                 break;
 

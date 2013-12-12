@@ -119,6 +119,7 @@ class ipc_client
     void process_task(cnc_instruction task) throw(std::exception);
     void send_to_master(const boost::system::error_code& ec) throw(std::exception);
     void read_from_master(const boost::system::error_code& ec) throw(std::exception);
+    void test_hndlr(const boost::system::error_code& ec) throw(std::exception);
 };
 
 #endif
