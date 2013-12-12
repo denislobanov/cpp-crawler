@@ -21,19 +21,8 @@ static std::atomic<bool> running;
 static boost::lockfree::spsc_queue<struct queue_node_s, boost::lockfree::capacity<BUFFER_MAX_SIZE>> node_buffer;
 static unsigned int nodes_sent = 0;
 
-//uut mock data
-static struct worker_config worker_test_cfg = {
-    .user_agent = "test_ipc_client",
-    .day_max_crawls = 5,
-
-    .page_cache_max = 10,
-    .page_cache_res = 2,
-    .robots_cache_max = 3,
-    .robots_cache_res = 1,
-
-    .db_path = "no db"
-};
-struct ipc_config test_cfg = {
+//uut
+static struct ipc_config test_cfg = {
     .get_buffer_min = 2,
     .work_presend = 2,
     .master_address = "127.0.0.1"
@@ -62,6 +51,17 @@ class test_server
     tcp::acceptor acceptor_;
     tcp::socket socket_;
     struct ipc_message message;
+    struct worker_config worker_test_cfg = {
+        .user_agent = "test_ipc_client",
+        .day_max_crawls = 5,
+
+        .page_cache_max = 10,
+        .page_cache_res = 2,
+        .robots_cache_max = 3,
+        .robots_cache_res = 1,
+
+        .db_path = "no db"
+    };
 
     void do_accept(void)
     {
@@ -90,7 +90,7 @@ class test_server
         if(!ec) {
             switch(message.type) {
             case instruction:
-                cout<<"recieved cnc_instruction from worker\n";
+                cout<<"recieved cnc_instruction ["<<reinterpret_cast<cnc_instruction&>(message.data.instruction)<<"] from worker\n";
                 process_instruction(reinterpret_cast<cnc_instruction&>(message.data.instruction));
                 break;
 
@@ -104,10 +104,12 @@ class test_server
 
             default:
                 cout<<"unknown message.type from worker ("<<message.type<<")!\n";
+                throw ipc_exception("unknown message.type from worker");
                 exit(-1);
             }
         } else {
             cerr<<"read_handler - boost error: "<<ec.message();
+            throw ipc_exception("ead_handler - boost error");
             exit(-2);
         }
     }
@@ -121,6 +123,10 @@ class test_server
             message.type = cnc_data;
             reinterpret_cast<struct worker_config&>(message.data.config) = worker_test_cfg;
 
+            cout<<"aoeuoateunh\n\n";
+            exit(-3);
+
+            cout<<"message size is "<<sizeof(message)<<endl;
             boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
                 [this](boost::system::error_code ec, std::size_t)
                 {
@@ -131,8 +137,7 @@ class test_server
                             boost::bind(&test_server::read_handler, this,
                                 boost::asio::placeholders::error));
                     } else {
-                        cerr<<"process_instruction::w_register::write lambda - boost error: "<<ec.message();
-                        exit(-2);
+                        throw ipc_exception("process_instruction::w_register::write lambda - boost error: "+ec.message());
                     }
                 });
             break;

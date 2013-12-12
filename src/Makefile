@@ -1,5 +1,5 @@
 CC=clang++
-CPPFLAGS=-Wall -std=c++11
+CPPFLAGS=-Wall -std=c++11 -g
 DEPENDENCIES=glibmm-2.4 libxml-2.0 glib-2.0
 OUT_DIR="."
 

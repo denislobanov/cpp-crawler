@@ -48,15 +48,15 @@ enum thread_state_e {
     next_task
 };
 
-enum data_state_e {
-    ready,
-    buffs_serv,
-    configured
-};
-
-struct node_buffer {
+struct node_buffer_s {
     std::atomic<unsigned int> size;
     std::queue<struct queue_node_s> data;
+    std::mutex lock;
+};
+
+struct task_queue_s {
+    std::atomic<unsigned int> size;
+    std::queue<cnc_instruction> data;
     std::mutex lock;
 };
 
@@ -100,9 +100,10 @@ class ipc_client
     struct ipc_message message;
 
     //controlling background thread
-    boost::lockfree::queue<cnc_instruction, boost::lockfree::capacity<BUFFER_MAX_SIZE>> task_queue;
+    struct task_queue_s task_queue;
     std::atomic<thread_state_e> thread_state;
-    std::atomic<data_state_e> data_state;
+    std::atomic<bool> synced;
+    std::atomic<bool> got_config;
 
     //ipc
     boost::asio::io_service ipc_service;
@@ -110,8 +111,8 @@ class ipc_client
     tcp::socket socket_;
 
     //internal work queues
-    struct node_buffer get_buffer;
-    struct node_buffer send_buffer;
+    struct node_buffer_s get_buffer;
+    struct node_buffer_s send_buffer;
 
     void handle_connected(const boost::system::error_code& ec) throw(std::exception);
     void ipc_thread(void) throw(std::exception);

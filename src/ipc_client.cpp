@@ -32,9 +32,11 @@ using boost::asio::ip::tcp;
 
 ipc_client::ipc_client(struct ipc_config& config): resolver_(ipc_service), socket_(ipc_service)
 {
+    //internal tracking of task_thread
     cfg = config;
     thread_state = stop;
-    data_state = ready;
+    synced = false;
+    got_config = false;
 
     //init internal tracking of worker
     status = IDLE;
@@ -53,8 +55,9 @@ ipc_client::ipc_client(struct ipc_config& config): resolver_(ipc_service), socke
 
 ipc_client::~ipc_client(void)
 {
-    data_state = buffs_serv;    //dont serve any more buffers
-    thread_state = stop;        //tell thread to shut down
+    //tell thread to shut down
+    synced = true;
+    thread_state = stop;
 }
 
 //connected to master, begin processing/scheduling tasks
@@ -98,37 +101,50 @@ void ipc_client::ipc_thread(void) throw(std::exception)
         if(thread_state >= connected) {
             //prevents spamming of master and makes sure follow up replies/reads occure in order
             if(thread_state == next_task) {
-                cnc_instruction task = {};
-                while(!task_queue.pop(task)) {
+
+                while(task_queue.size) {
+                    thread_state = connected; //i.e. next_task == false
+                    
+                    task_queue.lock.lock();
+                    cnc_instruction task = task_queue.data.front();
+                    task_queue.data.pop();
+                    --task_queue.size;
+                    task_queue.lock.unlock();
+                    
                     dbg<<"processing task: "<<task<<std::endl;
                     process_task(task);
                 }
             }
 
-            if(data_state < buffs_serv) {
-                data_state = buffs_serv;
+            if(!synced) {
+                synced = true;
 
                 //copy current size as other threads will always modify it
                 unsigned int s = get_buffer.size;
 
                 //dont fill get_buffer until we have a connection (long connection
                 //times can result in > cfg.get_buffer_min w_get_work tasks on queue)
+                task_queue.lock.lock();
                 if(s < cfg.get_buffer_min) {
-                    dbg<<"adding w_get_work task to queue\n";
                     cnc_instruction task = w_get_work;
-                    task_queue.push(task);
+                    dbg<<"adding w_get_work ("<<task<<") task to queue\n";
+                    task_queue.data.push(task);
+                    ++task_queue.size;
                 }
 
                 //send_to_master drains queue down to work_presend
                 if(send_buffer.size > cfg.work_presend) {
-                    dbg<<"adding w_send_work task to queue\n";
                     cnc_instruction task = w_send_work;
-                    task_queue.push(task);
+                    dbg<<"adding w_send_work ("<<task<<") task to queue\n";
+                    task_queue.data.push(task);
+                    ++task_queue.size;
                 }
+                task_queue.lock.unlock();
             }
         }
 
         std::this_thread::sleep_for(SERVICE_GRANUALITY);
+        dbg<<"::\n";
     }
 }
 
@@ -194,8 +210,6 @@ void ipc_client::process_task(cnc_instruction task) throw(std::exception)
         throw e;
     }
     }
-
-    thread_state = connected; //i.e. next_task == false
 }
 
 //send data to master - will keep calling itself until send_buffer.size < cfg.work_presend
@@ -224,7 +238,7 @@ void ipc_client::send_to_master(const boost::system::error_code& ec) throw(std::
         } else {
             dbg<<"drained send_buffer\n";
             thread_state = next_task;
-            data_state = ready;
+            synced = false;
         }
     } else {
         ipc_exception e("send_to_master() failed to send queue_node to master: "+ec.message());
@@ -239,14 +253,17 @@ void ipc_client::read_from_master(const boost::system::error_code& ec) throw(std
         switch(message.type) {
         case instruction:
             dbg_1<<"got instruction from master ("+std::to_string(message.data.instruction)+")\n";
-            task_queue.push(message.data.instruction);
+            task_queue.lock.lock();
+            ++task_queue.size;
+            task_queue.data.push(message.data.instruction);
+            task_queue.lock.unlock();
             break;
 
         case cnc_data:
             dbg<<"got config data from master\n";
             config_from_master = reinterpret_cast<struct worker_config&>(message.data.config);
 
-            data_state = configured;
+            got_config = true;
             break;
 
         case queue_node:
@@ -330,14 +347,18 @@ struct queue_node_s ipc_client::get_item(void) throw(std::exception)
 struct worker_config ipc_client::get_config(void)
 {
     cnc_instruction task = w_register;
-    task_queue.push(task);
+    task_queue.lock.lock();
+    ++task_queue.size;
+    task_queue.data.push(task);
+    task_queue.lock.unlock();
     dbg<<"added w_register task to queue\n";
 
     //block whilst waiting for master to send config
-    while(data_state != configured)
+    while(!got_config)
         std::this_thread::sleep_for(SERVICE_GRANUALITY);
 
-    data_state = ready;
+    //reset for next run
+    got_config = false;
     return config_from_master;
 }
 
