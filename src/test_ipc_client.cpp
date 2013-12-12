@@ -90,13 +90,13 @@ class test_server
         if(!ec) {
             switch(message.type) {
             case instruction:
-                cout<<"recieved cnc_instruction ["<<reinterpret_cast<cnc_instruction&>(message.data.instruction)<<"] from worker\n";
-                process_instruction(reinterpret_cast<cnc_instruction&>(message.data.instruction));
+                cout<<"recieved cnc_instruction ["<<message.data.instruction<<"] from worker\n";
+                process_instruction(message.data.instruction);
                 break;
 
             case queue_node:
                 cout<<"recieved queue_node from worker\n";
-                node_buffer.push(reinterpret_cast<struct queue_node_s&>(message.data.node));
+                node_buffer.push(message.data.node);
                 boost::asio::async_read(socket_, boost::asio::buffer(&message, sizeof(message)),
                     boost::bind(&test_server::read_handler, this,
                         boost::asio::placeholders::error));
@@ -121,10 +121,7 @@ class test_server
         {
             cout<<"sending worker_config\n";
             message.type = cnc_data;
-            reinterpret_cast<struct worker_config&>(message.data.config) = worker_test_cfg;
-
-            cout<<"aoeuoateunh\n\n";
-            exit(-3);
+            message.data.config = worker_test_cfg;
 
             cout<<"message size is "<<sizeof(message)<<endl;
             boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
@@ -148,7 +145,7 @@ class test_server
             cout<<"sending "<<test_cfg.get_buffer_min<<" queue_node_s\n";
             ++nodes_sent;
             message.type = queue_node;
-            node_buffer.pop(reinterpret_cast<struct queue_node_s&>(message.data.node));
+            node_buffer.pop(message.data.node);
 
             boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
                 boost::bind(&test_server::send_nodes, this,
@@ -178,7 +175,7 @@ class test_server
             if(nodes_sent < test_cfg.get_buffer_min) {
                 ++nodes_sent;
                 message.type = queue_node;
-                node_buffer.pop(reinterpret_cast<struct queue_node_s&>(message.data.node));
+                node_buffer.pop(message.data.node);
 
                 boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
                     boost::bind(&test_server::send_nodes, this,

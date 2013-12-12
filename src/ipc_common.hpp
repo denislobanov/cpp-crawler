@@ -88,15 +88,12 @@ enum message_type {
     queue_node      //queue_node_s
 };
 
-union ipc_data {
+struct ipc_data {
     cnc_instruction instruction;
     worker_status status;
-    std::aligned_storage<sizeof(struct worker_config),
-        alignof(struct worker_config)>::type config;
-    std::aligned_storage<sizeof(struct capabilities),
-        alignof(struct capabilities)>::type cap;
-    std::aligned_storage<sizeof(struct queue_node_s),
-        alignof(struct queue_node_s)>::type node;
+    struct worker_config config;
+    struct capabilities cap;
+    struct queue_node_s node;
 };
 
 struct ipc_message {

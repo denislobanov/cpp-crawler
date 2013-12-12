@@ -156,7 +156,7 @@ void ipc_client::process_task(cnc_instruction task) throw(std::exception)
     case w_get_work:
     {
         message.type = instruction;
-        reinterpret_cast<cnc_instruction&>(message.data.instruction) = task;
+        message.data.instruction = task;
 
         boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
             [this, task](boost::system::error_code ec, std::size_t)
@@ -177,7 +177,7 @@ void ipc_client::process_task(cnc_instruction task) throw(std::exception)
 
     case w_send_work:
         message.type = instruction;
-        reinterpret_cast<cnc_instruction&>(message.data.instruction) = task;
+        message.data.instruction = task;
 
         //dont use lambda here due to send_to_master complexity
         boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
@@ -188,7 +188,7 @@ void ipc_client::process_task(cnc_instruction task) throw(std::exception)
     case m_send_status:
     {
         message.type = instruction;
-        reinterpret_cast<cnc_instruction&>(message.data.instruction) = task;
+        message.data.instruction = task;
 
         boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
             [this, task](boost::system::error_code ec, std::size_t)
@@ -226,7 +226,7 @@ void ipc_client::send_to_master(const boost::system::error_code& ec) throw(std::
         //completed (its always getting filled anyway)
         if(send_buffer.size > cfg.work_presend) {
             send_buffer.lock.lock();
-            reinterpret_cast<struct queue_node_s&>(message.data.node) = send_buffer.data.front();
+            message.data.node = send_buffer.data.front();
             send_buffer.data.pop();
             --send_buffer.size;
             send_buffer.lock.unlock();
@@ -261,7 +261,7 @@ void ipc_client::read_from_master(const boost::system::error_code& ec) throw(std
 
         case cnc_data:
             dbg<<"got config data from master\n";
-            config_from_master = reinterpret_cast<struct worker_config&>(message.data.config);
+            config_from_master = message.data.config;
 
             got_config = true;
             break;
@@ -270,7 +270,7 @@ void ipc_client::read_from_master(const boost::system::error_code& ec) throw(std
         {
             dbg_1<<"get work queue node from master\n";
             get_buffer.lock.lock();
-            get_buffer.data.push(reinterpret_cast<struct queue_node_s&>(message.data.node));
+            get_buffer.data.push(message.data.node);
             ++get_buffer.size;
             get_buffer.lock.unlock();
 
@@ -278,7 +278,7 @@ void ipc_client::read_from_master(const boost::system::error_code& ec) throw(std
             if(get_buffer.size < cfg.get_buffer_min) {
                 dbg_1<<"asking for more work nodes ("<<get_buffer.size<<" < "<<cfg.get_buffer_min<<")\n";
                 message.type = instruction;
-                reinterpret_cast<cnc_instruction&>(message.data.instruction) = w_get_work;
+                message.data.instruction = w_get_work;
 
                 boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
                     [this](boost::system::error_code ec, std::size_t)
