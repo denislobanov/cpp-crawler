@@ -98,6 +98,7 @@ void ipc_client::ipc_thread(void) throw(std::exception)
     dbg<<"launching boost service\n";
     thread_state = run;
     ipc_service.run();
+    ipc_service.reset();
 
     while(thread_state >= run) {
         if(thread_state >= connected) {
@@ -172,8 +173,19 @@ void ipc_client::process_task(cnc_instruction task) throw(std::exception)
 
         dbg<<"sending data to master size "<<sizeof(message)<<"\n";
         boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
-            boost::bind(&ipc_client::test_hndlr, this,
-                boost::asio::placeholders::error));
+            [this, task](boost::system::error_code ec, std::size_t)
+            {
+                if(!ec) {
+                    dbg<<"send message to master type ["<<task<<"]\n";
+                    boost::asio::async_read(socket_, boost::asio::buffer(&message, sizeof(message)),
+                        boost::asio::transfer_all(),
+                        boost::bind(&ipc_client::read_from_master, this,
+                            boost::asio::placeholders::error));
+                } else {
+                    ipc_exception e("process_task() failed to send to master: "+ec.message());
+                    throw e;
+                }
+            });
         dbg<<"sent data\n";
         break;
     }
@@ -213,6 +225,10 @@ void ipc_client::process_task(cnc_instruction task) throw(std::exception)
         throw e;
     }
     }
+
+    //kick off ipc_service
+    ipc_service.run();  //will block
+    ipc_service.reset();
 }
 
 //send data to master - will keep calling itself until send_buffer.size < cfg.work_presend

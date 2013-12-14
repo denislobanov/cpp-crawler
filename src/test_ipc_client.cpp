@@ -1,5 +1,6 @@
 #include <iostream>
 #include <sstream>
+#include <chrono>   //this_thread.sleep_for()
 #include <thread>
 #include <atomic>
 #include <boost/lockfree/spsc_queue.hpp>
@@ -209,8 +210,18 @@ int main(void)
     cout<<">initialising test_client\n";
     ipc_client test_client(test_cfg);
 
+    cout<<">pre-seeing "<<test_cfg.get_buffer_min<<" queue_node_s to buffer\n";
+    for(unsigned int i = 0; i< test_cfg.get_buffer_min; ++i) {
+        struct queue_node_s n = {.url="http://preseed_node.com/preseed", .credit = i};
+        node_buffer.push(n);
+    }
+    cout<<"done.\n";
+
     cout<<">test_client getting config from server\n";
     struct worker_config ret_wcfg = test_client.get_config();
+
+    cout<<"\nallowing client time to buffer..\n";
+    std::this_thread::sleep_for(std::chrono::seconds(2));
 
     cout<<">beggining send/get loop of "<<GET_SEND_LOOPS<<" items\n---\n";
     for(unsigned int i = 0; i < GET_SEND_LOOPS; ++i) {
