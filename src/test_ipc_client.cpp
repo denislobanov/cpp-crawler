@@ -182,7 +182,8 @@ class test_server
                     boost::bind(&test_server::send_nodes, this,
                         boost::asio::placeholders::error));
             } else {
-                cout<<"finished sending queue_node_s to worker\n";
+                cout<<"finished sending all queue_node_s to worker\n";
+                nodes_sent = 0;
                 boost::asio::async_read(socket_, boost::asio::buffer(&message, sizeof(message)),
                     boost::bind(&test_server::read_handler, this,
                         boost::asio::placeholders::error));
@@ -210,10 +211,11 @@ int main(void)
     cout<<">initialising test_client\n";
     ipc_client test_client(test_cfg);
 
-    cout<<">pre-seeing "<<test_cfg.get_buffer_min<<" queue_node_s to buffer\n";
-    for(unsigned int i = 0; i< test_cfg.get_buffer_min; ++i) {
+    cout<<">pre-seeing "<<test_cfg.get_buffer_min*2<<" queue_node_s to buffer\n";
+    for(unsigned int i = 0; i< test_cfg.get_buffer_min*2; ++i) {
         struct queue_node_s n = {.url="http://preseed_node.com/preseed", .credit = i};
         node_buffer.push(n);
+        cout<<">preseed item "<<i<<" url=["<<n.url<<"] credit=["<<n.credit<<"]\n";
     }
     cout<<"done.\n";
 
@@ -230,11 +232,11 @@ int main(void)
         test_client.send_item(test_node);
 
         //reinitialise test node = reset data
-        test_node = {};
+        struct queue_node_s get_node;
         cout<<">getting test node from client\n";
-        test_node = test_client.get_item();
+        get_node = test_client.get_item(4);
 
-        cout<<">test_node url=["<<test_node.url<<"] credit=["<<test_node.credit<<"]\n";
+        cout<<">test_node url=["<<get_node.url<<"] credit=["<<get_node.credit<<"]\n";
     }
     cout<<"\n---\n>done.\n";
     running = false;

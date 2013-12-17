@@ -32,6 +32,13 @@ struct page_data_s {
 struct queue_node_s {
     unsigned int credit;    //cash given to link from referring page
     std::string url;
+
+    template<class Archive>
+    void serialize(Archive& ar, const unsigned int version)
+    {
+        ar & credit;
+        ar & url;
+    }
 };
 
 #endif

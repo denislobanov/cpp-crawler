@@ -84,6 +84,7 @@ class ipc_client
      *  will throw exception if queue is empty
      */
     struct queue_node_s get_item(void) throw(std::exception);
+    struct queue_node_s get_item(unsigned int t) throw(std::exception);
 
     /**
      * will block whilst waiting for config
@@ -102,7 +103,7 @@ class ipc_client
     //controlling background thread
     struct task_queue_s task_queue;
     std::atomic<thread_state_e> thread_state;
-    std::atomic<bool> synced;
+    std::atomic<bool> syncing;
     std::atomic<bool> got_config;
 
     //ipc

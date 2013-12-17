@@ -15,10 +15,10 @@ UNIT_TESTS=test_netio test_parser test_crawler_worker test_robots_txt test_cache
 all: crawler_worker crawler_master
 
 tests: $(UNIT_TESTS)
-	ifneq ($(OUT_DIR), ".")
+ifneq ($(OUT_DIR), ".")
 		@echo "copying tests"
-		$(foreach ut, $(UNIT_TESTS), mv $(ut) $(OUT_DIR)/$(ut))
-	endif
+		$(foreach ut, $(UNIT_TESTS), $(shell mv $(ut) $(OUT_DIR)/$(ut)))
+endif
 
 clean:
 	rm -f $(UNIT_TESTS) *.o

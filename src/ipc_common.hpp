@@ -68,6 +68,19 @@ struct worker_config {
 
     //parser
     std::vector<struct tagdb_s> parse_param;
+
+    template<class Archive>
+    void serialize(Archive& ar, const unsigned int version)
+    {
+        ar & day_max_crawls;
+        ar & worker_id;
+        ar & page_cache_max;
+        ar & page_cache_res;
+        ar & robots_cache_max;
+        ar & robots_cache_res;
+        ar & db_path;
+        ar & parse_param;
+    }
 };
 
 /**
@@ -76,36 +89,12 @@ struct worker_config {
 struct capabilities {
     unsigned int parsers;           //parser threads
     unsigned int total_threads;
-};
-
-/**
- * Communication structure
- *  - homologates sending/recieving of CnC & URL data as well as instructions
- */
-enum message_type {
-    instruction,    //cnc_instruction
-    cnc_data,       //worker_config or capabilities depending on previous cnc_instruction
-    queue_node      //queue_node_s
-};
-
-struct ipc_data {
-    cnc_instruction instruction;
-    worker_status status;
-    struct worker_config config;
-    struct capabilities cap;
-    struct queue_node_s node;
-};
-
-struct ipc_message {
-    message_type type;
-    ipc_data data;
 
     template<class Archive>
     void serialize(Archive& ar, const unsigned int version)
     {
-        ar & type;
-        ar & data;
+        ar & parsers;
+        ar & total_threads;
     }
 };
-
 #endif
