@@ -21,8 +21,9 @@
  * user supplied/config file in production
  */
 struct ipc_config {
-    unsigned int get_buffer_min;    //min size of get_buffer before fetching data
-    unsigned int work_presend;      //max size of send_buffer before draining
+    unsigned int gbuff_min;         //min size of get_buffer before fetching data
+    unsigned int sbuff_max;         //max size of send_buffer before draining
+    unsigned int sc;                //nodes to send to fill/drain buffer
     std::string master_address;
 };
 
@@ -97,8 +98,7 @@ class ipc_client
     struct ipc_config cfg;
     std::thread task_thread;
     worker_status status;
-    struct worker_config config_from_master;
-    struct ipc_message message;
+    struct worker_config worker_cfg;
 
     //controlling background thread
     struct task_queue_s task_queue;
@@ -110,6 +110,9 @@ class ipc_client
     boost::asio::io_service ipc_service;
     tcp::resolver resolver_;
     tcp::socket socket_;
+    cnc_instruction ipc_cnc;
+    struct queue_node_s ipc_qnode;
+    std::atomic<unsigned int> node_count;
 
     //internal work queues
     struct node_buffer_s get_buffer;
@@ -118,9 +121,9 @@ class ipc_client
     void handle_connected(const boost::system::error_code& ec) throw(std::exception);
     void ipc_thread(void) throw(std::exception);
     void process_task(cnc_instruction task) throw(std::exception);
-    void send_to_master(const boost::system::error_code& ec) throw(std::exception);
-    void read_from_master(const boost::system::error_code& ec) throw(std::exception);
-    void test_hndlr(const boost::system::error_code& ec) throw(std::exception);
+    void get_wconf(const boost::system::error_code& ec) throw(std::exception);
+    void get_qnode(const boost::system::error_code& ec) throw(std::exception);
+    void send_qnode(const boost::system::error_code& ec) throw(std::exception);
 };
 
 #endif

@@ -40,8 +40,7 @@ ipc_client::ipc_client(struct ipc_config& config): resolver_(ipc_service), socke
 
     //init internal tracking of worker
     status = IDLE;
-    config_from_master = {};
-    message = {};
+    worker_cfg = {};
 
     //internal buffers
     get_buffer.size = 0;
@@ -120,19 +119,19 @@ void ipc_client::ipc_thread(void) throw(std::exception)
                 //dont fill get_buffer until we have a connection (long connection
                 //times can result in > cfg.get_buffer_min w_get_work tasks on queue)
                 task_queue.lock.lock();
-                if(get_buffer.size < cfg.get_buffer_min) {
+                if(get_buffer.size < cfg.gbuff_min) {
                     syncing = true;
                     cnc_instruction task = w_get_work;
-                    dbg<<"adding w_get_work ("<<task<<") task to queue\n";
+                    dbg_1<<"adding w_get_work ("<<task<<") task to queue\n";
                     task_queue.data.push(task);
                     ++task_queue.size;
                 }
 
                 //send_to_master drains queue down to work_presend
-                if(send_buffer.size > cfg.work_presend) {
+                if(send_buffer.size > cfg.sbuff_max) {
                     syncing = true;
                     cnc_instruction task = w_send_work;
-                    dbg<<"adding w_send_work ("<<task<<") task to queue\n";
+                    dbg_1<<"adding w_send_work ("<<task<<") task to queue\n";
                     task_queue.data.push(task);
                     ++task_queue.size;
                 }
@@ -140,76 +139,58 @@ void ipc_client::ipc_thread(void) throw(std::exception)
 
                 dbg_1<<"checked sync\n";
             }
-            dbg<<"::\n";
         }
 
         std::this_thread::sleep_for(SERVICE_GRANUALITY);
     }
 }
 
-void ipc_client::test_hndlr(const boost::system::error_code& ec) throw(std::exception)
-{
-    dbg<<"aosenuthao\n\n";
-    if(!ec) {
-        dbg<<"send message to master\n";
-        boost::asio::async_read(socket_, boost::asio::buffer(&message, sizeof(message)),
-            boost::bind(&ipc_client::send_to_master, this,
-                boost::asio::placeholders::error));
-    } else {
-        throw ipc_exception("process_task() failed to send to master: "+ec.message());
-    }
-}
-
 //there must not be any outstanding reads when this function enters
 void ipc_client::process_task(cnc_instruction task) throw(std::exception)
 {
+    ipc_cnc = task;
+
     switch(task) {
     case w_register:
-    case w_get_work:
-    {
-        message.type = instruction;
-        message.data.instruction = task;
-        boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
+        boost::asio::async_write(socket_, boost::asio::buffer(&ipc_cnc, sizeof(ipc_cnc)),
             [this, task](boost::system::error_code ec, std::size_t)
             {
                 if(!ec) {
-                    dbg<<"send message to master type ["<<task<<"]\n";
-                    boost::asio::async_read(socket_, boost::asio::buffer(&message, sizeof(message)),
-                        boost::bind(&ipc_client::read_from_master, this,
+                    dbg_1<<"sent registration request to master\n";
+                    boost::asio::async_read(socket_, boost::asio::buffer(&worker_cfg, sizeof(worker_cfg)),
+                        boost::bind(&ipc_client::get_wconf, this,
                             boost::asio::placeholders::error));
                 } else {
                     throw ipc_exception("process_task() failed to send to master: "+ec.message());
                 }
             });
         break;
-    }
 
-    case w_send_work:
-        message.type = instruction;
-        message.data.instruction = task;
+    case w_get_work:
+        node_count = 0;
 
-        //dont use lambda here due to send_to_master complexity
-        boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
-            boost::bind(&ipc_client::send_to_master, this,
-                boost::asio::placeholders::error));
-        break;
-
-    case m_send_status:
-    {
-        message.type = instruction;
-        message.data.instruction = task;
-        boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
+        boost::asio::async_write(socket_, boost::asio::buffer(&ipc_cnc, sizeof(ipc_cnc)),
             [this, task](boost::system::error_code ec, std::size_t)
             {
                 if(!ec) {
-                    dbg<<"send message to master type ["<<task<<"]\n";
-                    thread_state = next_task;
+                    dbg_1<<"sent work request to master\n";
+                    boost::asio::async_read(socket_, boost::asio::buffer(&ipc_qnode, sizeof(ipc_qnode)),
+                        boost::bind(&ipc_client::get_qnode, this,
+                            boost::asio::placeholders::error));
                 } else {
-                    throw ipc_exception("process_task() failed to send m_send_status to master: "+ec.message());
+                    throw ipc_exception("process_task() failed to send to master: "+ec.message());
                 }
             });
         break;
-    }
+
+    case w_send_work:
+        node_count = 0;
+
+        //dont use lambda here due to send_to_master complexity
+        boost::asio::async_write(socket_, boost::asio::buffer(&ipc_cnc, sizeof(ipc_cnc)),
+            boost::bind(&ipc_client::send_qnode, this,
+                boost::asio::placeholders::error));
+        break;
 
     default:
         throw ipc_exception("task queue contains unknown or non-worker task! ("+std::to_string(task)+")\n");
@@ -221,36 +202,70 @@ void ipc_client::process_task(cnc_instruction task) throw(std::exception)
     dbg_1<<"process_task completed ***\n";
 }
 
+void ipc_client::get_wconf(const boost::system::error_code& ec) throw(std::exception)
+{
+    if(!ec) {
+        dbg_1<<"got config data from master\n";
+        got_config = true;
+        thread_state = next_task;
+    } else {
+        throw ipc_exception("get_wconf() boost error: "+ec.message());
+    }
+}
+
+void ipc_client::get_qnode(const boost::system::error_code& ec) throw(std::exception)
+{
+    if(!ec) {
+        dbg_1<<"got work queue node from master ("<<node_count<<")\n";
+        if(!syncing) //in case of out-of-order calling of get/send sync tasks
+            syncing = true;
+
+        get_buffer.lock.lock();
+        get_buffer.data.push(ipc_qnode);
+        ++get_buffer.size;
+        ++node_count;
+        get_buffer.lock.unlock();
+
+        //loop until get_buffer is filled to avoid stalling crawler
+        if(node_count < cfg.sc) {
+            dbg_1<<"waiting for more nodes ("<<node_count<<" < "<<cfg.sc<<")\n";
+            boost::asio::async_read(socket_,boost::asio::buffer(&ipc_qnode, sizeof(ipc_qnode)),
+                boost::bind(&ipc_client::get_qnode, this,
+                    boost::asio::placeholders::error));
+        } else {
+            dbg_1<<"finished getting work nodes from master\n";
+            thread_state = next_task;
+            syncing = false;
+        }
+    } else {
+        throw ipc_exception("get_qnode() boost error: "+ec.message());
+    }
+}
+
+
 //send data to master - will keep calling itself until send_buffer.size < cfg.work_presend
-void ipc_client::send_to_master(const boost::system::error_code& ec) throw(std::exception)
+void ipc_client::send_qnode(const boost::system::error_code& ec) throw(std::exception)
 {
     if(!ec) {
         if(!syncing) //in case of out-of-order calling of get/send sync tasks
             syncing = true;
 
         dbg_1<<"sent node to master\n";
-        message = {
-            .type = queue_node,
-            .data = {}
-        };
 
-        //do not completely drain the send_buffer to allow other tasks to be
-        //completed (its always getting filled anyway)
-        if(send_buffer.size > cfg.work_presend) {
-            dbg<<"send lock\n";
+        if(node_count < cfg.sc) {
             send_buffer.lock.lock();
-            message.data.node = send_buffer.data.front();
+            ipc_qnode = send_buffer.data.front();
             send_buffer.data.pop();
             --send_buffer.size;
+            ++node_count;
             send_buffer.lock.unlock();
-            dbg<<"send unlock\n";
 
-            dbg_1<<"sending node to master\n";
-            boost::asio::async_write(socket_, boost::asio::buffer(&message, sizeof(message)),
-                boost::bind(&ipc_client::send_to_master, this,
+            dbg_1<<"sending "<<node_count<<" nodes to master\n";
+            boost::asio::async_write(socket_, boost::asio::buffer(&ipc_qnode, sizeof(ipc_qnode)),
+                boost::bind(&ipc_client::send_qnode, this,
                     boost::asio::placeholders::error));
         } else {
-            dbg<<"drained send_buffer\n";
+            dbg_1<<"drained send_buffer\n";
             thread_state = next_task;
             syncing = false;
         }
@@ -259,66 +274,6 @@ void ipc_client::send_to_master(const boost::system::error_code& ec) throw(std::
     }
 }
 
-//got request response from master, process it
-void ipc_client::read_from_master(const boost::system::error_code& ec) throw(std::exception)
-{
-    if(!ec) {
-        switch(message.type) {
-        case instruction:
-            dbg_1<<"got instruction from master ("+std::to_string(message.data.instruction)+")\n";
-
-            task_queue.lock.lock();
-            ++task_queue.size;
-            task_queue.data.push(message.data.instruction);
-            task_queue.lock.unlock();
-
-            thread_state = next_task;
-            break;
-
-        case cnc_data:
-            dbg<<"got config data from master\n";
-            config_from_master = message.data.config;
-
-            got_config = true;
-            thread_state = next_task;
-            break;
-
-        case queue_node:
-        {
-            dbg_1<<"got work queue node from master url=["<<message.data.node.url<<"] credit=["<<message.data.node.credit<<"]\n";
-            if(!syncing) //in case of out-of-order calling of get/send sync tasks
-                syncing = true;
-
-            get_buffer.lock.lock();
-            dbg<<"buffer locked\n";
-            get_buffer.data.push(message.data.node);
-            dbg<<"data pushed\n";
-            ++get_buffer.size;
-            dbg<<"size ++\n";
-            get_buffer.lock.unlock();
-            dbg<<"done\n";
-
-            //loop until get_buffer is filled to avoid stalling crawler
-            if(get_buffer.size < cfg.get_buffer_min) {
-                dbg_1<<"waiting for more work nodes ("<<get_buffer.size<<" < "<<cfg.get_buffer_min<<")\n";
-                boost::asio::async_read(socket_,boost::asio::buffer(&message, sizeof(message)),
-                    boost::bind(&ipc_client::read_from_master, this,
-                        boost::asio::placeholders::error));
-            } else {
-                dbg<<"finished getting work nodes from master\n";
-                thread_state = next_task;
-                syncing = false;
-            }
-            break;
-        }
-
-        default:
-            throw ipc_exception("read_from_master: message has invalid type ("+std::to_string(message.type)+")");
-        }
-    } else {
-        throw ipc_exception("read_from_master boost error: "+ec.message());
-    }
-}
 
 //public intreface
 //add item to send_buffer
@@ -345,7 +300,7 @@ struct queue_node_s ipc_client::get_item(unsigned int t) throw(std::exception)
         std::this_thread::sleep_for(std::chrono::seconds(1));
 
     if(get_buffer.size > 0) {
-        
+
         dbg<<"data present on queue\n";
         get_buffer.lock.lock();
         data = get_buffer.data.front();
@@ -353,7 +308,7 @@ struct queue_node_s ipc_client::get_item(unsigned int t) throw(std::exception)
         --get_buffer.size;
         get_buffer.lock.unlock();
     } else {
-        throw ipc_exception("timout: get_buffer.data empty\n");
+        throw ipc_exception("timeout: get_buffer.data empty\n");
     }
 
     dbg<<"returning data from queue [credit: "<<data.credit<<" url: "<<data.url<<"]\n";
@@ -397,7 +352,7 @@ struct worker_config ipc_client::get_config(void)
 
     //reset for next run
     got_config = false;
-    return config_from_master;
+    return worker_cfg;
 }
 
 //public intreface
