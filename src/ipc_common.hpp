@@ -97,4 +97,13 @@ struct capabilities {
         ar & total_threads;
     }
 };
+
+/**
+ * Type of data sent in an ipc message
+ */
+enum data_type_e {
+    instruction,
+    cnc_data,
+    queue_nod
+};
 #endif

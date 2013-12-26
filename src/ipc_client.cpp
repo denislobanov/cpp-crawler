@@ -30,19 +30,19 @@
 
 using boost::asio::ip::tcp;
 
-ipc_client::ipc_client(struct ipc_config& config): resolver_(ipc_service), socket_(ipc_service)
+ipc_client::ipc_client(struct ipc_config& config):
+    resolver_(ipc_service), connection_(ipc_service)
 {
-    //internal tracking of task_thread
     cfg = config;
+
+    //initialise internal data
     thread_state = stop;
     syncing = false;
     got_config = false;
-
-    //init internal tracking of worker
+    
     status = IDLE;
     worker_cfg = {};
-
-    //internal buffers
+    
     get_buffer.size = 0;
     send_buffer.size = 0;
     task_queue.size = 0;
@@ -59,18 +59,6 @@ ipc_client::~ipc_client(void)
     syncing = true;
     thread_state = stop;
     task_thread.join();
-}
-
-//connected to master, begin processing/scheduling tasks
-void ipc_client::handle_connected(const boost::system::error_code& ec) throw(std::exception)
-{
-    if(!ec) {
-        thread_state = next_task;
-        dbg<<"thread_state: "<<thread_state<<std::endl;
-        dbg<<"connected.\n";
-    } else {
-        throw ipc_exception("async_connect error in handle except: "+ec.message());
-    }
 }
 
 //this thread runs in the background for the life of the object, handeling
@@ -145,6 +133,18 @@ void ipc_client::ipc_thread(void) throw(std::exception)
     }
 }
 
+//connected to master, begin processing/scheduling tasks
+void ipc_client::handle_connected(const boost::system::error_code& ec) throw(std::exception)
+{
+    if(!ec) {
+        thread_state = next_task;
+        dbg<<"thread_state: "<<thread_state<<std::endl;
+        dbg<<"connected.\n";
+    } else {
+        throw ipc_exception("async_connect error in handle except: "+ec.message());
+    }
+}
+
 //there must not be any outstanding reads when this function enters
 void ipc_client::process_task(cnc_instruction task) throw(std::exception)
 {
@@ -152,13 +152,14 @@ void ipc_client::process_task(cnc_instruction task) throw(std::exception)
 
     switch(task) {
     case w_register:
-        boost::asio::async_write(socket_, boost::asio::buffer(&ipc_cnc, sizeof(ipc_cnc)),
+        connection_.data_type(instruction);
+        connection_.data(task);
+        connection_.async_write(
             [this, task](boost::system::error_code ec, std::size_t)
             {
                 if(!ec) {
                     dbg_1<<"sent registration request to master\n";
-                    boost::asio::async_read(socket_, boost::asio::buffer(&worker_cfg, sizeof(worker_cfg)),
-                        boost::bind(&ipc_client::get_wconf, this,
+                    connection_.async_read(boost::bind(&ipc_client::get_wconf, this,
                             boost::asio::placeholders::error));
                 } else {
                     throw ipc_exception("process_task() failed to send to master: "+ec.message());

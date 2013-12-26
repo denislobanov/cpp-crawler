@@ -13,6 +13,7 @@
 
 #include "ipc_common.hpp"
 #include "page_data.hpp"
+#include "connection.hpp"
 
 #define BUFFER_MAX_SIZE     2048
 #define SERVICE_GRANUALITY  std::chrono::milliseconds(500)
@@ -107,11 +108,9 @@ class ipc_client
     std::atomic<bool> got_config;
 
     //ipc
+    connection connection_;
     boost::asio::io_service ipc_service;
     tcp::resolver resolver_;
-    tcp::socket socket_;
-    cnc_instruction ipc_cnc;
-    struct queue_node_s ipc_qnode;
     std::atomic<unsigned int> node_count;
 
     //internal work queues
