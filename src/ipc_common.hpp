@@ -104,6 +104,6 @@ struct capabilities {
 enum data_type_e {
     instruction,
     cnc_data,
-    queue_nod
+    queue_node
 };
 #endif

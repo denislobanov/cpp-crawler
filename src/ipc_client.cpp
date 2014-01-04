@@ -12,6 +12,7 @@
 
 #include "ipc_client.hpp"
 #include "ipc_common.hpp"
+#include "connection.hpp"
 
 //Local defines
 #define DEBUG 2
@@ -31,21 +32,17 @@
 using boost::asio::ip::tcp;
 
 ipc_client::ipc_client(struct ipc_config& config):
-    resolver_(ipc_service), connection_(ipc_service)
+    connection_(ipc_service), resolver_(ipc_service)
 {
     cfg = config;
 
     //initialise internal data
-    thread_state = stop;
+    thread_state = st_stop;
     syncing = false;
     got_config = false;
     
-    status = IDLE;
-    worker_cfg = {};
-    
-    get_buffer.size = 0;
-    send_buffer.size = 0;
-    task_queue.size = 0;
+    wstatus = IDLE;
+    wcfg = {};
 
     //launch background service thread
     task_thread = std::thread(&ipc_client::ipc_thread, this);
@@ -57,7 +54,7 @@ ipc_client::~ipc_client(void)
 {
     //tell thread to shut down
     syncing = true;
-    thread_state = stop;
+    thread_state = st_stop;
     task_thread.join();
 }
 
@@ -72,7 +69,7 @@ void ipc_client::ipc_thread(void) throw(std::exception)
             if(!ec) {
                 dbg_1<<"resolved master\n";
                 dbg<<"connecting to: "<<it->endpoint()<<std::endl;
-                boost::asio::async_connect(socket_, it,
+                boost::asio::async_connect(connection_.socket(), it,
                     boost::bind(&ipc_client::handle_connected, this,
                         boost::asio::placeholders::error));
             } else {
@@ -81,22 +78,16 @@ void ipc_client::ipc_thread(void) throw(std::exception)
         });
 
     dbg<<"launching boost service\n";
-    thread_state = run;
+    thread_state = st_run;
     ipc_service.run();
     ipc_service.reset();
 
-    while(thread_state >= run) {
-        if(thread_state >= connected) {
+    while(thread_state >= st_run) {
+        if(thread_state >= st_connected) {
             //prevents spamming of master and makes sure follow up replies/reads occure in order
-            if(thread_state == next_task) {
-                while(task_queue.size) {
-                    thread_state = connected; //i.e. next_task == false
-
-                    task_queue.lock.lock();
-                    cnc_instruction task = task_queue.data.front();
-                    task_queue.data.pop();
-                    --task_queue.size;
-                    task_queue.lock.unlock();
+            if(thread_state == st_next_task) {
+                if(task_queue.size()) {
+                    cnc_instruction task = task_queue.pop();
 
                     dbg<<"processing task: "<<task<<" ***\n";
                     process_task(task);
@@ -106,24 +97,18 @@ void ipc_client::ipc_thread(void) throw(std::exception)
             if(!syncing) {
                 //dont fill get_buffer until we have a connection (long connection
                 //times can result in > cfg.get_buffer_min w_get_work tasks on queue)
-                task_queue.lock.lock();
-                if(get_buffer.size < cfg.gbuff_min) {
+                if(get_buffer.size() < cfg.gbuff_min) {
                     syncing = true;
-                    cnc_instruction task = w_get_work;
-                    dbg_1<<"adding w_get_work ("<<task<<") task to queue\n";
-                    task_queue.data.push(task);
-                    ++task_queue.size;
+                    dbg_1<<"adding w_get_work task to queue\n";
+                    task_queue.push(w_get_work);
                 }
 
                 //send_to_master drains queue down to work_presend
-                if(send_buffer.size > cfg.sbuff_max) {
+                if(send_buffer.size() > cfg.sbuff_max) {
                     syncing = true;
-                    cnc_instruction task = w_send_work;
-                    dbg_1<<"adding w_send_work ("<<task<<") task to queue\n";
-                    task_queue.data.push(task);
-                    ++task_queue.size;
+                    dbg_1<<"adding w_send_work task to queue\n";
+                    task_queue.push(w_send_work);
                 }
-                task_queue.lock.unlock();
 
                 dbg_1<<"checked sync\n";
             }
@@ -137,7 +122,7 @@ void ipc_client::ipc_thread(void) throw(std::exception)
 void ipc_client::handle_connected(const boost::system::error_code& ec) throw(std::exception)
 {
     if(!ec) {
-        thread_state = next_task;
+        thread_state = st_next_task;
         dbg<<"thread_state: "<<thread_state<<std::endl;
         dbg<<"connected.\n";
     } else {
@@ -148,49 +133,43 @@ void ipc_client::handle_connected(const boost::system::error_code& ec) throw(std
 //there must not be any outstanding reads when this function enters
 void ipc_client::process_task(cnc_instruction task) throw(std::exception)
 {
-    ipc_cnc = task;
+    thread_state = st_processing;
+    connection_.wdata_type(instruction);
+    connection_.wdata(task);
 
     switch(task) {
     case w_register:
-        connection_.data_type(instruction);
-        connection_.data(task);
-        connection_.async_write(
-            [this, task](boost::system::error_code ec, std::size_t)
-            {
-                if(!ec) {
-                    dbg_1<<"sent registration request to master\n";
-                    connection_.async_read(boost::bind(&ipc_client::get_wconf, this,
-                            boost::asio::placeholders::error));
-                } else {
-                    throw ipc_exception("process_task() failed to send to master: "+ec.message());
-                }
-            });
+        connection_.async_write([this, task](boost::system::error_code ec, std::size_t)
+        {
+            if(!ec) {
+                dbg_1<<"sent registration request to master\n";
+                connection_.async_read(boost::bind(&ipc_client::read_data, this,
+                    boost::asio::placeholders::error));
+            } else {
+                throw ipc_exception("process_task() failed to send to master: "+ec.message());
+            }
+        });
         break;
 
     case w_get_work:
-        node_count = 0;
-
-        boost::asio::async_write(socket_, boost::asio::buffer(&ipc_cnc, sizeof(ipc_cnc)),
-            [this, task](boost::system::error_code ec, std::size_t)
-            {
-                if(!ec) {
-                    dbg_1<<"sent work request to master\n";
-                    boost::asio::async_read(socket_, boost::asio::buffer(&ipc_qnode, sizeof(ipc_qnode)),
-                        boost::bind(&ipc_client::get_qnode, this,
-                            boost::asio::placeholders::error));
-                } else {
-                    throw ipc_exception("process_task() failed to send to master: "+ec.message());
-                }
-            });
+        nodes_io = 0;
+        connection_.async_write([this, task](boost::system::error_code ec, std::size_t)
+        {
+            if(!ec) {
+                dbg_1<<"sent work request to master\n";
+                connection_.async_read(boost::bind(&ipc_client::read_data, this,
+                    boost::asio::placeholders::error));
+            } else {
+                throw ipc_exception("process_task() failed to send to master: "+ec.message());
+            }
+        });
         break;
 
     case w_send_work:
-        node_count = 0;
-
+        nodes_io = 0;
         //dont use lambda here due to send_to_master complexity
-        boost::asio::async_write(socket_, boost::asio::buffer(&ipc_cnc, sizeof(ipc_cnc)),
-            boost::bind(&ipc_client::send_qnode, this,
-                boost::asio::placeholders::error));
+        connection_.async_write(boost::bind(&ipc_client::send_qnode, this,
+            boost::asio::placeholders::error));
         break;
 
     default:
@@ -203,46 +182,52 @@ void ipc_client::process_task(cnc_instruction task) throw(std::exception)
     dbg_1<<"process_task completed ***\n";
 }
 
-void ipc_client::get_wconf(const boost::system::error_code& ec) throw(std::exception)
+void ipc_client::read_data(const boost::system::error_code& ec) throw(std::exception)
 {
     if(!ec) {
-        dbg_1<<"got config data from master\n";
-        got_config = true;
-        thread_state = next_task;
-    } else {
-        throw ipc_exception("get_wconf() boost error: "+ec.message());
-    }
-}
-
-void ipc_client::get_qnode(const boost::system::error_code& ec) throw(std::exception)
-{
-    if(!ec) {
-        dbg_1<<"got work queue node from master ("<<node_count<<")\n";
-        if(!syncing) //in case of out-of-order calling of get/send sync tasks
-            syncing = true;
-
-        get_buffer.lock.lock();
-        get_buffer.data.push(ipc_qnode);
-        ++get_buffer.size;
-        ++node_count;
-        get_buffer.lock.unlock();
-
-        //loop until get_buffer is filled to avoid stalling crawler
-        if(node_count < cfg.sc) {
-            dbg_1<<"waiting for more nodes ("<<node_count<<" < "<<cfg.sc<<")\n";
-            boost::asio::async_read(socket_,boost::asio::buffer(&ipc_qnode, sizeof(ipc_qnode)),
-                boost::bind(&ipc_client::get_qnode, this,
-                    boost::asio::placeholders::error));
-        } else {
-            dbg_1<<"finished getting work nodes from master\n";
-            thread_state = next_task;
-            syncing = false;
+        switch(connection_.rdata_type()) {
+        case instruction:
+        {
+            cnc_instruction i = connection_.rdata<cnc_instruction>();
+            task_queue.push(i);
+            thread_state = st_next_task;
+            break;
         }
+        
+        case cnc_data:
+        {
+            wcfg = connection_.rdata<worker_config>();
+            thread_state = st_next_task;
+            got_config = true;
+            break;
+        }
+        
+        case queue_node:
+        {
+            queue_node_s n = connection_.rdata<queue_node_s>();
+            get_buffer.push(n);
+            ++nodes_io;
+
+            if(nodes_io >= cfg.sc) {
+                thread_state = st_next_task;
+                syncing = false;
+            } else {
+                dbg_1<<"asking for more nodes (node_io is "<<nodes_io<<")\n";
+                connection_.async_read(boost::bind(&ipc_client::read_data, this,
+                    boost::asio::placeholders::error));
+            }
+            break;
+        }
+        
+        default:
+            throw ipc_exception("unknown data type recieved from master ("+std::to_string(connection_.rdata_type())+")\n");
+        }
+
+        
     } else {
-        throw ipc_exception("get_qnode() boost error: "+ec.message());
+        throw ipc_exception("get_data() boost error: "+ec.message());
     }
 }
-
 
 //send data to master - will keep calling itself until send_buffer.size < cfg.work_presend
 void ipc_client::send_qnode(const boost::system::error_code& ec) throw(std::exception)
@@ -253,21 +238,16 @@ void ipc_client::send_qnode(const boost::system::error_code& ec) throw(std::exce
 
         dbg_1<<"sent node to master\n";
 
-        if(node_count < cfg.sc) {
-            send_buffer.lock.lock();
-            ipc_qnode = send_buffer.data.front();
-            send_buffer.data.pop();
-            --send_buffer.size;
-            ++node_count;
-            send_buffer.lock.unlock();
+        if(nodes_io < cfg.sc) {
+            connection_.wdata_type(queue_node);
+            connection_.wdata(send_buffer.pop());
 
-            dbg_1<<"sending "<<node_count<<" nodes to master\n";
-            boost::asio::async_write(socket_, boost::asio::buffer(&ipc_qnode, sizeof(ipc_qnode)),
-                boost::bind(&ipc_client::send_qnode, this,
-                    boost::asio::placeholders::error));
+            dbg_1<<"sending "<<nodes_io<<" nodes to master\n";
+            connection_.async_write(boost::bind(&ipc_client::send_qnode, this,
+                boost::asio::placeholders::error));
         } else {
             dbg_1<<"drained send_buffer\n";
-            thread_state = next_task;
+            thread_state = st_next_task;
             syncing = false;
         }
     } else {
@@ -280,12 +260,8 @@ void ipc_client::send_qnode(const boost::system::error_code& ec) throw(std::exce
 //add item to send_buffer
 void ipc_client::send_item(struct queue_node_s& data)
 {
-    send_buffer.lock.lock();
-    send_buffer.data.push(data);
-    ++send_buffer.size;
-    send_buffer.lock.unlock();
-
-    dbg<<"added work item to queue, size is now: "<<send_buffer.size<<std::endl;
+    send_buffer.push(data);
+    dbg<<"added work item to queue, size is now: "<<send_buffer.size()<<std::endl;
 }
 
 //public interface
@@ -297,17 +273,12 @@ struct queue_node_s ipc_client::get_item(unsigned int t) throw(std::exception)
     struct queue_node_s data = {};
 
     //timed block if buffer is empty
-    while(get_buffer.size == 0 && dt++ < t)
+    while(get_buffer.size() == 0 && dt++ < t)
         std::this_thread::sleep_for(std::chrono::seconds(1));
 
-    if(get_buffer.size > 0) {
-
+    if(get_buffer.size() > 0) {
         dbg<<"data present on queue\n";
-        get_buffer.lock.lock();
-        data = get_buffer.data.front();
-        get_buffer.data.pop();
-        --get_buffer.size;
-        get_buffer.lock.unlock();
+        data = get_buffer.pop();
     } else {
         throw ipc_exception("timeout: get_buffer.data empty\n");
     }
@@ -321,13 +292,9 @@ struct queue_node_s ipc_client::get_item(void) throw(std::exception)
 {
     struct queue_node_s data = {};
 
-    if(get_buffer.size > 0) {
+    if(get_buffer.size() > 0) {
         dbg<<"data present on queue\n";
-        get_buffer.lock.lock();
-        data = get_buffer.data.front();
-        get_buffer.data.pop();
-        --get_buffer.size;
-        get_buffer.lock.unlock();
+        data = get_buffer.pop();
     } else {
         throw ipc_exception("get_buffer.data empty\n");
     }
@@ -340,11 +307,7 @@ struct queue_node_s ipc_client::get_item(void) throw(std::exception)
 //request worker config from master. block until recieved
 struct worker_config ipc_client::get_config(void)
 {
-    cnc_instruction task = w_register;
-    task_queue.lock.lock();
-    ++task_queue.size;
-    task_queue.data.push(task);
-    task_queue.lock.unlock();
+    task_queue.push(w_register);
     dbg<<"added w_register task to queue\n";
 
     //block whilst waiting for master to send config
@@ -353,11 +316,11 @@ struct worker_config ipc_client::get_config(void)
 
     //reset for next run
     got_config = false;
-    return worker_cfg;
+    return wcfg;
 }
 
 //public intreface
 void ipc_client::set_status(worker_status& s)
 {
-    status = s;
+    wstatus = s;
 }

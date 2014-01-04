@@ -44,21 +44,52 @@ struct ipc_exception: std::exception {
  * background thread state
  */
 enum thread_state_e {
-    stop,
-    run,
-    connected,
-    next_task
+    st_stop,
+    st_run,
+    st_connected,
+    st_next_task,
+    st_processing
 };
 
-struct node_buffer_s {
-    std::atomic<unsigned int> size;
-    std::queue<struct queue_node_s> data;
-    std::mutex lock;
-};
+template<typename T> class mpmc_queue {
+    public:
+    mpmc_queue(void)
+    {
+        size_ = 0;
+    }
 
-struct task_queue_s {
-    std::atomic<unsigned int> size;
-    std::queue<cnc_instruction> data;
+    ~mpmc_queue(void) {}
+
+    void push(T t)
+    {
+        lock.lock();
+        data.push(t);
+        ++size_;
+        lock.unlock();
+    }
+
+    T pop(void)
+    {
+        T t;
+        lock.lock();
+        t = data.front();
+        data.pop();
+        --size_;
+        lock.unlock();
+
+        return t;
+    }
+
+    std::size_t size(void)
+    {
+        lock.lock();
+        return size_;
+        lock.unlock();
+    }
+
+    private:
+    std::atomic<std::size_t> size_;
+    std::queue<T> data;
     std::mutex lock;
 };
 
@@ -97,31 +128,30 @@ class ipc_client
 
     private:
     struct ipc_config cfg;
+    worker_status wstatus;
+    struct worker_config wcfg;
     std::thread task_thread;
-    worker_status status;
-    struct worker_config worker_cfg;
 
     //controlling background thread
-    struct task_queue_s task_queue;
+    mpmc_queue<cnc_instruction> task_queue;
     std::atomic<thread_state_e> thread_state;
     std::atomic<bool> syncing;
     std::atomic<bool> got_config;
+    std::atomic<unsigned int> nodes_io;
 
     //ipc
     connection connection_;
     boost::asio::io_service ipc_service;
     tcp::resolver resolver_;
-    std::atomic<unsigned int> node_count;
 
     //internal work queues
-    struct node_buffer_s get_buffer;
-    struct node_buffer_s send_buffer;
+    mpmc_queue<struct queue_node_s> get_buffer;
+    mpmc_queue<struct queue_node_s> send_buffer;
 
-    void handle_connected(const boost::system::error_code& ec) throw(std::exception);
     void ipc_thread(void) throw(std::exception);
+    void handle_connected(const boost::system::error_code& ec) throw(std::exception);
     void process_task(cnc_instruction task) throw(std::exception);
-    void get_wconf(const boost::system::error_code& ec) throw(std::exception);
-    void get_qnode(const boost::system::error_code& ec) throw(std::exception);
+    void read_data(const boost::system::error_code& ec) throw(std::exception);
     void send_qnode(const boost::system::error_code& ec) throw(std::exception);
 };
 
