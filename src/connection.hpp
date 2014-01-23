@@ -86,9 +86,8 @@ class connection
     template<typename Handler> void async_read(Handler handler)
     {
         //first read the header from socket
-        void (connection::*f)(
-            const boost::system::error_code&, boost::tuple<Handler>)
-        = &connection::read_header<Handler>;
+        void (connection::*f)(const boost::system::error_code&, boost::tuple<Handler>)
+            = &connection::read_header<Handler>;
 
         boost::asio::async_read(socket_, boost::asio::buffer(rx_header),
             boost::bind(f, this, boost::asio::placeholders::error,
@@ -123,13 +122,12 @@ class connection
 
             //read data from socket, call handler on completion - caller
             //must explicitly deserealise data
-            void (connection::*f)(
-                const boost::system::error_code&, boost::tuple<Handler>)
-            = &connection::read_data<Handler>;
+            void (connection::*f)(const boost::system::error_code&, boost::tuple<Handler>)
+                = &connection::read_data<Handler>;
             
             boost::asio::async_read(socket_, boost::asio::buffer(rx_data),
                 boost::bind(f, this, boost::asio::placeholders::error,
-                    boost::make_tuple(handler)));
+                    handler));
         } else {
             //call handler with error code
             boost::get<0>(handler)(ec);

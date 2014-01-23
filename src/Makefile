@@ -5,7 +5,7 @@ OUT_DIR="."
 
 INCLUDES=$(shell pkg-config --cflags $(DEPENDENCIES))
 LDDFLAGS=$(shell curl-config --libs) $(shell pkg-config --libs $(DEPENDENCIES))
-LIBRARIES=-lboost_system -lpthread
+LIBRARIES=-lboost_system -lpthread -lboost_serialization
 
 COMMON_OBJECTS=netio.o parser.o robots_txt.o database.o cache.o memory_mgr.o
 WORKER_OBJECTS=ipc_client.o crawler_worker.o

@@ -3,6 +3,7 @@
 
 #include <glibmm/ustring.h>
 #include <type_traits>
+#include <boost/serialization/vector.hpp>
 
 #include "page_data.hpp"
 
@@ -47,12 +48,23 @@ enum tag_type_e {            //part of parser configuration
 struct tagdb_s {            //part of parser configuration
     tag_type_e tag_type;    //meta
 
-    Glib::ustring xpath;    //xpath to match node
-    Glib::ustring attr;     //needed to extract attr_data from libxml2
+    //FIXME: use Glib::ustring here - as xpaths need to be unicode
+    std::string xpath;    //xpath to match node
+    std::string attr;     //needed to extract attr_data from libxml2
+
+    template<class Archive>
+    void serialize(Archive& ar, const unsigned int version)
+    {
+        ar & tag_type;
+        ar & xpath;
+        ar & attr;
+    }
 };
 
 
 struct worker_config {
+    friend class boost::serialization::access;
+
     std::string user_agent;         //to report to sites
     unsigned int day_max_crawls;    //per page
     unsigned int worker_id;

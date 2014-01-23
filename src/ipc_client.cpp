@@ -139,7 +139,7 @@ void ipc_client::process_task(cnc_instruction task) throw(std::exception)
 
     switch(task) {
     case w_register:
-        connection_.async_write([this, task](boost::system::error_code ec, std::size_t)
+        connection_.async_write([this](boost::system::error_code ec, std::size_t)
         {
             if(!ec) {
                 dbg_1<<"sent registration request to master\n";
@@ -153,7 +153,7 @@ void ipc_client::process_task(cnc_instruction task) throw(std::exception)
 
     case w_get_work:
         nodes_io = 0;
-        connection_.async_write([this, task](boost::system::error_code ec, std::size_t)
+        connection_.async_write([this](boost::system::error_code ec, std::size_t)
         {
             if(!ec) {
                 dbg_1<<"sent work request to master\n";
