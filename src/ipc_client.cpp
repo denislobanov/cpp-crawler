@@ -139,30 +139,14 @@ void ipc_client::process_task(cnc_instruction task) throw(std::exception)
 
     switch(task) {
     case w_register:
-        connection_.async_write([this](boost::system::error_code ec, std::size_t)
-        {
-            if(!ec) {
-                dbg_1<<"sent registration request to master\n";
-                connection_.async_read(boost::bind(&ipc_client::read_data, this,
-                    boost::asio::placeholders::error));
-            } else {
-                throw ipc_exception("process_task() failed to send to master: "+ec.message());
-            }
-        });
+        connection_.async_write(boost::bind(&ipc_client::write_complete, this,
+            boost::asio::placeholders::error));
         break;
 
     case w_get_work:
         nodes_io = 0;
-        connection_.async_write([this](boost::system::error_code ec, std::size_t)
-        {
-            if(!ec) {
-                dbg_1<<"sent work request to master\n";
-                connection_.async_read(boost::bind(&ipc_client::read_data, this,
-                    boost::asio::placeholders::error));
-            } else {
-                throw ipc_exception("process_task() failed to send to master: "+ec.message());
-            }
-        });
+        connection_.async_write(boost::bind(&ipc_client::write_complete, this,
+            boost::asio::placeholders::error));
         break;
 
     case w_send_work:
@@ -180,6 +164,17 @@ void ipc_client::process_task(cnc_instruction task) throw(std::exception)
     ipc_service.run();  //will block
     ipc_service.reset();
     dbg_1<<"process_task completed ***\n";
+}
+
+void ipc_client::write_complete(boost::system::error_code ec) throw(std::exception)
+{
+    if(!ec) {
+        dbg_1<<"sent request to master\n";
+        connection_.async_read(boost::bind(&ipc_client::read_data, this,
+            boost::asio::placeholders::error));
+    } else {
+        throw ipc_exception("process_task() failed to write to master: "+ec.message());
+    }
 }
 
 void ipc_client::read_data(const boost::system::error_code& ec) throw(std::exception)
