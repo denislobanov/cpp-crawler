@@ -61,7 +61,6 @@ struct tagdb_s {            //part of parser configuration
     }
 };
 
-
 struct worker_config {
     friend class boost::serialization::access;
 

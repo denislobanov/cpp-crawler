@@ -67,7 +67,7 @@ class connection
         boost::archive::binary_oarchive arch(oss);
         arch<<header;
         tx_header = oss.str();
-        
+
         if(!oss || tx_header.size() != header_length) {
             //send error to handler
             boost::system::error_code err(boost::asio::error::invalid_argument);
@@ -104,7 +104,7 @@ class connection
                 boost::archive::binary_iarchive arch(iss);
 
                 arch>>header;
-                
+
             } catch (std::exception& e) {
                 boost::system::error_code err(boost::asio::error::invalid_argument);
                 boost::get<0>(handler)(err);
@@ -124,7 +124,7 @@ class connection
             //must explicitly deserealise data
             void (connection::*f)(const boost::system::error_code&, boost::tuple<Handler>)
                 = &connection::read_data<Handler>;
-            
+
             boost::asio::async_read(socket_, boost::asio::buffer(rx_data),
                 boost::bind(f, this, boost::asio::placeholders::error,
                     handler));
@@ -154,7 +154,7 @@ class connection
             ar & data_size;
         }
     } header;
-    
+
     //half duplex communication, though full duplex can easily be implemented
     //by not sharing the header above with tx&rx functions
     std::string tx_data;

@@ -34,13 +34,16 @@ using boost::asio::ip::tcp;
 ipc_client::ipc_client(struct ipc_config& config):
     connection_(ipc_service), resolver_(ipc_service)
 {
+    dbg<<"connection_ and resolver_ initialised\n";
+    sleep(1);
     cfg = config;
+    dbg<<"this ok\n";
 
     //initialise internal data
     thread_state = st_stop;
     syncing = false;
     got_config = false;
-    
+
     wstatus = IDLE;
     wcfg = {};
 
@@ -188,7 +191,7 @@ void ipc_client::read_data(const boost::system::error_code& ec) throw(std::excep
             thread_state = st_next_task;
             break;
         }
-        
+
         case cnc_data:
         {
             wcfg = connection_.rdata<worker_config>();
@@ -196,7 +199,7 @@ void ipc_client::read_data(const boost::system::error_code& ec) throw(std::excep
             got_config = true;
             break;
         }
-        
+
         case queue_node:
         {
             queue_node_s n = connection_.rdata<queue_node_s>();
@@ -213,12 +216,12 @@ void ipc_client::read_data(const boost::system::error_code& ec) throw(std::excep
             }
             break;
         }
-        
+
         default:
             throw ipc_exception("unknown data type recieved from master ("+std::to_string(connection_.rdata_type())+")\n");
         }
 
-        
+
     } else {
         throw ipc_exception("get_data() boost error: "+ec.message());
     }
