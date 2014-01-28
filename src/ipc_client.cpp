@@ -31,18 +31,16 @@
 
 using boost::asio::ip::tcp;
 
-ipc_client::ipc_client(struct ipc_config& config):
-    connection_(ipc_service), resolver_(ipc_service)
+ipc_client::ipc_client(struct ipc_config& config, boost::asio::io_service& _ipc_service):
+    connection_(_ipc_service), resolver_(_ipc_service)
 {
-    dbg<<"connection_ and resolver_ initialised\n";
-    sleep(1);
     cfg = config;
-    dbg<<"this ok\n";
 
     //initialise internal data
     thread_state = st_stop;
     syncing = false;
     got_config = false;
+    ipc_service = &_ipc_service;
 
     wstatus = IDLE;
     wcfg = {};
@@ -82,8 +80,8 @@ void ipc_client::ipc_thread(void) throw(std::exception)
 
     dbg<<"launching boost service\n";
     thread_state = st_run;
-    ipc_service.run();
-    ipc_service.reset();
+    ipc_service->run();
+    ipc_service->reset();
 
     while(thread_state >= st_run) {
         if(thread_state >= st_connected) {
@@ -126,8 +124,7 @@ void ipc_client::handle_connected(const boost::system::error_code& ec) throw(std
 {
     if(!ec) {
         thread_state = st_next_task;
-        dbg<<"thread_state: "<<thread_state<<std::endl;
-        dbg<<"connected.\n";
+        dbg<<"connected. thread_state: "<<thread_state<<std::endl;
     } else {
         throw ipc_exception("async_connect error in handle except: "+ec.message());
     }
@@ -164,8 +161,8 @@ void ipc_client::process_task(cnc_instruction task) throw(std::exception)
     }
 
     //kick off ipc_service
-    ipc_service.run();  //will block
-    ipc_service.reset();
+    ipc_service->run();  //will block
+    ipc_service->reset();
     dbg_1<<"process_task completed ***\n";
 }
 

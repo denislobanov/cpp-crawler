@@ -100,18 +100,24 @@ class connection
         if(!ec) {
             //get&deserealize header
             try {
-                std::istringstream iss(std::string(&rx_header[0], header_length));
+                std::cout<<"deserealizing header (size: "<<rx_header.size()<<")\n";
+                std::istringstream iss(std::string(&rx_header[0], rx_header.size()));
+                std::cout<<"creating archive of header\n";
                 boost::archive::binary_iarchive arch(iss);
+                sleep(1);
 
+                std::cout<<"instantiating archive\n";
                 arch>>header;
 
             } catch (std::exception& e) {
+                std::cerr<<"read_header cought exception: "<<e.what()<<std::endl;
                 boost::system::error_code err(boost::asio::error::invalid_argument);
                 boost::get<0>(handler)(err);
                 return;
             }
 
             if(!header.data_size) {
+                std::cout<<"!header.data_size\n";
                 boost::system::error_code err(boost::asio::error::invalid_argument);
                 boost::get<0>(handler)(err);
                 return;

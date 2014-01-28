@@ -214,9 +214,8 @@ int main(void)
     srv.detach();
 
     cout<<">initialising test_client\n";
-    ipc_client test_client(test_cfg);
-
-    sleep(2);
+    boost::asio::io_service io_service;
+    ipc_client test_client(test_cfg, io_service);
 
     cout<<">pre-seeing "<<test_cfg.gbuff_min*2<<" queue_node_s to buffer\n";
     for(unsigned int i = 0; i< test_cfg.gbuff_min*2; ++i) {

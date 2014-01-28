@@ -98,7 +98,7 @@ using boost::asio::ip::tcp;
 class ipc_client
 {
     public:
-    ipc_client(struct ipc_config& config);
+    ipc_client(struct ipc_config& config, boost::asio::io_service& _ipc_service);
     ~ipc_client(void);
 
     /**
@@ -141,7 +141,7 @@ class ipc_client
 
     //ipc
     connection connection_;
-    boost::asio::io_service ipc_service;
+    boost::asio::io_service* ipc_service;
     tcp::resolver resolver_;
 
     //internal work queues
