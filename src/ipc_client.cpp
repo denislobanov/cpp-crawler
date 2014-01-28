@@ -116,6 +116,7 @@ void ipc_client::ipc_thread(void) throw(std::exception)
         }
 
         std::this_thread::sleep_for(SERVICE_GRANUALITY);
+        dbg<<"::\n";
     }
 }
 
@@ -139,6 +140,7 @@ void ipc_client::process_task(cnc_instruction task) throw(std::exception)
 
     switch(task) {
     case w_register:
+        dbg<<"sending registration request\n";
         connection_.async_write(boost::bind(&ipc_client::write_complete, this,
             boost::asio::placeholders::error));
         break;

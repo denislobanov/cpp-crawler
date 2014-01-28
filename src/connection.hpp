@@ -45,6 +45,7 @@ class connection
 
         tx_data = oss.str();
         header.data_size = tx_data.size();
+        std::cout<<"header.data_size is "<<header.data_size<<std::endl;
     }
 
     //de-serealized data from transmittion
@@ -62,14 +63,15 @@ class connection
     //transmit serealized data
     template<typename Handler> void async_write(Handler handler)
     {
+        //data already serialized by wdata()
         std::ostringstream oss;
-        oss<<std::setw(header_length);
         boost::archive::binary_oarchive arch(oss);
         arch<<header;
         tx_header = oss.str();
 
-        if(!oss || tx_header.size() != header_length) {
+        if(!oss || tx_header.size() == 0) {
             //send error to handler
+            std::cerr<<"(!oss || tx_header.size() != header_length) tx_header size is: "<<tx_header.size()<<" header_lenght is "<<header_length<<"\n";
             boost::system::error_code err(boost::asio::error::invalid_argument);
             socket_.get_io_service().post(boost::bind(handler, err));
             return;
@@ -89,6 +91,7 @@ class connection
         void (connection::*f)(const boost::system::error_code&, boost::tuple<Handler>)
             = &connection::read_header<Handler>;
 
+        rx_header.resize(header_length);
         boost::asio::async_read(socket_, boost::asio::buffer(rx_header),
             boost::bind(f, this, boost::asio::placeholders::error,
                 boost::make_tuple(handler)));
@@ -168,7 +171,7 @@ class connection
     std::vector<char> rx_data;
     std::vector<char> rx_header;
 
-    enum {header_length = sizeof(header)};
+    enum {header_length = sizeof(struct header_s)};
 };
 
 #endif

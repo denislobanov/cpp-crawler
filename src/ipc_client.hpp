@@ -82,9 +82,7 @@ template<typename T> class mpmc_queue {
 
     std::size_t size(void)
     {
-        lock.lock();
         return size_;
-        lock.unlock();
     }
 
     private:
