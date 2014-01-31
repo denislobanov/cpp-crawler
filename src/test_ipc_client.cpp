@@ -217,8 +217,8 @@ int main(void)
     boost::asio::io_service io_service;
     ipc_client test_client(test_cfg, io_service);
 
-    cout<<">pre-seeing "<<test_cfg.gbuff_min*2<<" queue_node_s to buffer\n";
-    for(unsigned int i = 0; i< test_cfg.gbuff_min*2; ++i) {
+    cout<<">pre-seeing "<<test_cfg.gbuff_min<<" queue_node_s to buffer\n";
+    for(unsigned int i = 0; i< test_cfg.gbuff_min; ++i) {
         struct queue_node_s n = {.url="http://preseed_node.com/preseed", .credit = i};
         node_buffer.push(n);
         cout<<">preseed item "<<i<<" url=["<<n.url<<"] credit=["<<n.credit<<"]\n";
@@ -234,12 +234,12 @@ int main(void)
     cout<<">beggining send/get loop of "<<GET_SEND_LOOPS<<" items\n---\n";
     for(unsigned int i = 0; i < GET_SEND_LOOPS; ++i) {
         struct queue_node_s test_node = {.url = "test_url", .credit = i};
-        cout<<">sending test node, url=["<<test_node.url<<"] credit=["<<test_node.credit<<"]\n";
+        cout<<"\n\n"<<i<<">SEND\n>sending test node, url=["<<test_node.url<<"] credit=["<<test_node.credit<<"]\n";
         test_client.send_item(test_node);
 
         //reinitialise test node = reset data
         struct queue_node_s get_node;
-        cout<<">getting test node from client\n";
+        cout<<"\n\n"<<i<<">GET\n>getting test node from client\n";
         get_node = test_client.get_item(4);
 
         cout<<">test_node url=["<<get_node.url<<"] credit=["<<get_node.credit<<"]\n";

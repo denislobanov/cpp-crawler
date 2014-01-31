@@ -85,6 +85,11 @@ template<typename T> class mpmc_queue {
         return size_;
     }
 
+    bool empty(void)
+    {
+        return data.empty();
+    }
+
     private:
     std::atomic<std::size_t> size_;
     std::queue<T> data;
@@ -133,7 +138,8 @@ class ipc_client
     //controlling background thread
     mpmc_queue<cnc_instruction> task_queue;
     std::atomic<thread_state_e> thread_state;
-    std::atomic<bool> syncing;
+    std::atomic<bool> sync_gbuff;
+    std::atomic<bool> sync_sbuff;
     std::atomic<bool> got_config;
     std::atomic<unsigned int> nodes_io;
 

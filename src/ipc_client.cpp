@@ -18,9 +18,9 @@
 #define DEBUG 2
 
 #if defined(DEBUG)
-    #define dbg std::cout<<__FILE__<<"("<<__LINE__<<"): "
+    #define dbg std::cout<<__FILE__<<"("<<__LINE__<<") "<<__func__<<": "
     #if DEBUG > 1
-        #define dbg_1 std::cout<<__FILE__<<"("<<__LINE__<<"): "
+        #define dbg_1 std::cout<<__FILE__<<"("<<__LINE__<<") "<<__func__<<": "
     #else
         #define dbg_1 0 && std::cout
     #endif
@@ -38,7 +38,8 @@ ipc_client::ipc_client(struct ipc_config& config, boost::asio::io_service& _ipc_
 
     //initialise internal data
     thread_state = st_stop;
-    syncing = false;
+    sync_gbuff = false;
+    sync_sbuff = false;
     got_config = false;
     ipc_service = &_ipc_service;
 
@@ -54,7 +55,7 @@ ipc_client::ipc_client(struct ipc_config& config, boost::asio::io_service& _ipc_
 ipc_client::~ipc_client(void)
 {
     //tell thread to shut down
-    syncing = true;
+    sync_gbuff = sync_sbuff = true;
     thread_state = st_stop;
     task_thread.join();
 }
@@ -95,28 +96,23 @@ void ipc_client::ipc_thread(void) throw(std::exception)
                 }
             }
 
-            if(!syncing) {
-                //dont fill get_buffer until we have a connection (long connection
-                //times can result in > cfg.get_buffer_min w_get_work tasks on queue)
-                if(get_buffer.size() < cfg.gbuff_min) {
-                    syncing = true;
-                    dbg_1<<"adding w_get_work task to queue\n";
-                    task_queue.push(w_get_work);
-                }
+            //dont fill get_buffer until we have a connection (long connection
+            //times can result in > cfg.get_buffer_min w_get_work tasks on queue)
+            if(!sync_gbuff && (get_buffer.size() < cfg.gbuff_min)) {
+                sync_gbuff = true;
+                dbg_1<<"adding w_get_work task to queue\n";
+                task_queue.push(w_get_work);
+            }
 
-                //send_to_master drains queue down to work_presend
-                if(send_buffer.size() > cfg.sbuff_max) {
-                    syncing = true;
-                    dbg_1<<"adding w_send_work task to queue\n";
-                    task_queue.push(w_send_work);
-                }
-
-                dbg_1<<"checked sync\n";
+            //send_to_master drains queue down to work_presend
+            if(!sync_sbuff && (send_buffer.size() > cfg.sbuff_max)) {
+                sync_sbuff = true;
+                dbg_1<<"adding w_send_work task to queue\n";
+                task_queue.push(w_send_work);
             }
         }
 
         std::this_thread::sleep_for(SERVICE_GRANUALITY);
-        dbg<<"::\n";
     }
 }
 
@@ -127,7 +123,7 @@ void ipc_client::handle_connected(const boost::system::error_code& ec) throw(std
         thread_state = st_next_task;
         dbg<<"connected. thread_state: "<<thread_state<<std::endl;
     } else {
-        throw ipc_exception("async_connect error in handle except: "+ec.message());
+        throw ipc_exception("handle_connected() async_connect error: "+ec.message());
     }
 }
 
@@ -153,7 +149,6 @@ void ipc_client::process_task(cnc_instruction task) throw(std::exception)
 
     case w_send_work:
         nodes_io = 0;
-        //dont use lambda here due to send_to_master complexity
         connection_.async_write(boost::bind(&ipc_client::send_qnode, this,
             boost::asio::placeholders::error));
         break;
@@ -205,13 +200,14 @@ void ipc_client::read_data(const boost::system::error_code& ec) throw(std::excep
             get_buffer.push(n);
             ++nodes_io;
 
-            if(nodes_io >= cfg.sc) {
-                thread_state = st_next_task;
-                syncing = false;
-            } else {
-                dbg_1<<"asking for more nodes (node_io is "<<nodes_io<<")\n";
+            if(nodes_io < cfg.sc) {
+                dbg_1<<"asking for more nodes (node_io: "<<nodes_io<<" get_buffer.size(): "<<get_buffer.size()<<")\n";
                 connection_.async_read(boost::bind(&ipc_client::read_data, this,
                     boost::asio::placeholders::error));
+            } else {
+                thread_state = st_next_task;
+                sync_gbuff = false;
+                dbg_1<<"got enough nodes from master (nodes_io: "<<nodes_io<<" get_buffer.size(): "<<get_buffer.size()<<")\n";
             }
             break;
         }
@@ -230,28 +226,25 @@ void ipc_client::read_data(const boost::system::error_code& ec) throw(std::excep
 void ipc_client::send_qnode(const boost::system::error_code& ec) throw(std::exception)
 {
     if(!ec) {
-        if(!syncing) //in case of out-of-order calling of get/send sync tasks
-            syncing = true;
-
-        dbg_1<<"sent node to master\n";
+        dbg_1<<"sent node to master, send_buffer.size(): "<<send_buffer.size()<<std::endl;
 
         if(nodes_io < cfg.sc) {
             connection_.wdata_type(queue_node);
             connection_.wdata(send_buffer.pop());
+            ++nodes_io;
 
-            dbg_1<<"sending "<<nodes_io<<" nodes to master\n";
+            dbg_1<<"sending node "<<nodes_io<<" to master\n";
             connection_.async_write(boost::bind(&ipc_client::send_qnode, this,
                 boost::asio::placeholders::error));
         } else {
-            dbg_1<<"drained send_buffer\n";
+            dbg_1<<"drained send_buffer, size is: "<<send_buffer.size()<<std::endl;
             thread_state = st_next_task;
-            syncing = false;
+            sync_sbuff = false;
         }
     } else {
         throw ipc_exception("send_to_master() failed to send queue_node to master: "+ec.message());
     }
 }
-
 
 //public intreface
 //add item to send_buffer
@@ -266,14 +259,13 @@ void ipc_client::send_item(struct queue_node_s& data)
 //filled by task_thread. Will throw exception if blocked for t seconds
 struct queue_node_s ipc_client::get_item(unsigned int t) throw(std::exception)
 {
-    unsigned int dt = 0;
     struct queue_node_s data = {};
 
     //timed block if buffer is empty
-    while(get_buffer.size() == 0 && dt++ < t)
+    while(get_buffer.empty() && t--)
         std::this_thread::sleep_for(std::chrono::seconds(1));
 
-    if(get_buffer.size() > 0) {
+    if(!get_buffer.empty()) {
         dbg<<"data present on queue\n";
         data = get_buffer.pop();
     } else {
@@ -289,7 +281,7 @@ struct queue_node_s ipc_client::get_item(void) throw(std::exception)
 {
     struct queue_node_s data = {};
 
-    if(get_buffer.size() > 0) {
+    if(!get_buffer.empty()) {
         dbg<<"data present on queue\n";
         data = get_buffer.pop();
     } else {
