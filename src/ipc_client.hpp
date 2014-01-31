@@ -120,7 +120,6 @@ class ipc_client
      *  will throw exception if queue is empty
      */
     struct queue_node_s get_item(void) throw(std::exception);
-    struct queue_node_s get_item(unsigned int t) throw(std::exception);
 
     /**
      * will block whilst waiting for config
@@ -133,15 +132,9 @@ class ipc_client
     struct ipc_config cfg;
     worker_status wstatus;
     struct worker_config wcfg;
-    std::thread task_thread;
 
     //controlling background thread
-    mpmc_queue<cnc_instruction> task_queue;
-    std::atomic<thread_state_e> thread_state;
-    std::atomic<bool> sync_gbuff;
-    std::atomic<bool> sync_sbuff;
-    std::atomic<bool> got_config;
-    std::atomic<unsigned int> nodes_io;
+    std::atomic<bool> send_data;
 
     //ipc
     connection connection_;
@@ -152,7 +145,7 @@ class ipc_client
     mpmc_queue<struct queue_node_s> get_buffer;
     mpmc_queue<struct queue_node_s> send_buffer;
 
-    void ipc_thread(void) throw(std::exception);
+    void connect(void) throw(std::exception);
     void handle_connected(const boost::system::error_code& ec) throw(std::exception);
     void process_task(cnc_instruction task) throw(std::exception);
     void read_data(const boost::system::error_code& ec) throw(std::exception);

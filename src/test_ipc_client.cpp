@@ -50,14 +50,14 @@ class test_server
         acceptor_(ipc_service, tcp::endpoint(tcp::v4(), MASTER_SERVICE_PORT)),
         connection_(ipc_service)
     {
-        cout<<"server: starting test server\n";
+        cout<<">server: starting test server\n";
         do_accept();
         ipc_service.run();
     }
 
     ~test_server()
     {
-        cout<<"bye!\n";
+        cout<<">server: bye!\n";
     }
 
     private:
@@ -65,16 +65,15 @@ class test_server
     tcp::acceptor acceptor_;
     connection connection_;
     struct queue_node_s ipc_qnode;
-    std::atomic<unsigned int> node_count;
 
     void do_accept(void)
     {
-        cout<<"do_accept()\n";
+        cout<<">do_accept()\n";
         acceptor_.async_accept(connection_.socket(),
             [this](boost::system::error_code ec)
             {
                 if(!ec) {
-                    cout<<"server: accepted connection from client, waiting for initial data..\n";
+                    cout<<">server: accepted connection from client, waiting for initial data..\n";
                     connection_.async_read(boost::bind(&test_server::read_cnc,
                         this, boost::asio::placeholders::error));
                 }
@@ -86,7 +85,7 @@ class test_server
         //we're going to spend most of our time here, so this is a good
         //place to check for kill flags etc
         if(!running) {
-            cout<<"server exiting\n";
+            cout<<">server: exiting\n";
             return;
         }
 
@@ -96,7 +95,7 @@ class test_server
 
                 switch(ipc_cnc) {
                 case w_register:
-                    cout<<"recieved w_register from client\n";
+                    cout<<">server: recieved w_register from client\n";
                     connection_.wdata_type(cnc_data);
                     connection_.wdata(worker_test_cfg);
                     connection_.async_write(boost::bind(&test_server::write_complete,
@@ -104,33 +103,29 @@ class test_server
                     break;
 
                 case w_get_work:
-                    cout<<"sending "<<test_cfg.sc<<" queue_node_s\n";
-
-                    node_count = 1; //will send one before send_qnode handler
+                    cout<<">server: sending queue_node_s\n";
                     node_buffer.pop(ipc_qnode);
 
                     connection_.wdata_type(queue_node);
                     connection_.wdata(ipc_qnode);
-                    connection_.async_write(boost::bind(&test_server::send_qnode,
+                    connection_.async_write(boost::bind(&test_server::read_cnc,
                         this, boost::asio::placeholders::error));
                     break;
 
                 case w_send_work:
-                    node_count = 0;
-
-                    cout<<"client about to send "<<test_cfg.sc<<" queue_node_s\n";
+                    cout<<">server: about to get a queue_node_s\n";
                     connection_.async_read(boost::bind(&test_server::read_qnode,
                         this, boost::asio::placeholders::error));
                     break;
 
                 default:
-                    cout<<"client sent invalid instruction "<<ipc_cnc<<endl;
+                    cout<<">server: client sent invalid instruction "<<ipc_cnc<<endl;
                     connection_.async_read(boost::bind(&test_server::read_cnc,
                         this, boost::asio::placeholders::error));
                     break;
                 }
             } else {
-                cerr<<"invalid data type from client, got: "<<connection_.rdata_type()<<endl;
+                cerr<<">server: invalid data type from client, got: "<<connection_.rdata_type()<<endl;
                 connection_.async_read(boost::bind(&test_server::read_cnc,
                     this, boost::asio::placeholders::error));
             }
@@ -142,7 +137,7 @@ class test_server
     void write_complete(const boost::system::error_code& ec)
     {
         if(!ec) {
-            cout<<"write to client successful, waiting for data\n";
+            cout<<">server: write to client successful, waiting for data\n";
             connection_.async_read(boost::bind(&test_server::read_cnc,
                 this, boost::asio::placeholders::error));
         } else {
@@ -153,49 +148,20 @@ class test_server
     void read_qnode(const boost::system::error_code& ec)
     {
         if(!ec) {
-            if(node_count < test_cfg.sc) {
-                //client still writing
-                if(connection_.rdata_type() == queue_node) {
-                    ++node_count;
-                    ipc_qnode = connection_.rdata<struct queue_node_s>();
-                    node_buffer.push(ipc_qnode);
+            if(connection_.rdata_type() == queue_node) {
+                ipc_qnode = connection_.rdata<struct queue_node_s>();
+                node_buffer.push(ipc_qnode);
 
-                    connection_.async_read(boost::bind(&test_server::read_qnode,
-                        this, boost::asio::placeholders::error));
-                } else {
-                    cerr<<"client did not send a queue_node!! read "<<node_count<<" expected "<<test_cfg.sc<<endl;
-                    cerr<<"data type from client "<<connection_.rdata_type()<<endl;
-                    connection_.async_read(boost::bind(&test_server::read_cnc,
-                        this, boost::asio::placeholders::error));
-                }
             } else {
-                cout<<"finished reading nodes from client\n";
-                connection_.async_read(boost::bind(&test_server::read_cnc,
-                    this, boost::asio::placeholders::error));
+                cerr<<">server: client did not send a queue_node!\n";
+                cerr<<">server: data type from client "<<connection_.rdata_type()<<endl;
             }
+
+            connection_.async_read(boost::bind(&test_server::read_cnc,
+                this, boost::asio::placeholders::error));
+
         } else {
             throw ipc_exception("read_qnode() boost error: "+ec.message());
-        }
-    }
-
-    void send_qnode(const boost::system::error_code& ec)
-    {
-        if(!ec) {
-            if(node_count < test_cfg.sc) {
-                ++node_count;
-                node_buffer.pop(ipc_qnode);
-
-                connection_.wdata_type(queue_node);
-                connection_.wdata(ipc_qnode);
-                connection_.async_write(boost::bind(&test_server::send_qnode,
-                    this, boost::asio::placeholders::error));
-            } else {
-                cout<<"finished sending "<<node_count<<" nodes to client\n";
-                connection_.async_read(boost::bind(&test_server::read_cnc,
-                    this, boost::asio::placeholders::error));
-            }
-        } else {
-            throw ipc_exception("send_qnode() boost error: "+ec.message());
         }
     }
 };
@@ -203,7 +169,7 @@ class test_server
 void run_server(void)
 {
     test_server server;
-    cout<<"end of run_server()\n";
+    cout<<">end of run_server()\n";
 }
 
 int main(void)
@@ -228,19 +194,16 @@ int main(void)
     cout<<">test_client getting config from server\n";
     struct worker_config ret_wcfg = test_client.get_config();
 
-    cout<<"\nallowing client time to buffer..\n";
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-
     cout<<">beggining send/get loop of "<<GET_SEND_LOOPS<<" items\n---\n";
     for(unsigned int i = 0; i < GET_SEND_LOOPS; ++i) {
         struct queue_node_s test_node = {.url = "test_url", .credit = i};
-        cout<<"\n\n"<<i<<">SEND\n>sending test node, url=["<<test_node.url<<"] credit=["<<test_node.credit<<"]\n";
+        cout<<"\n"<<i<<">SEND\n>sending test node, url=["<<test_node.url<<"] credit=["<<test_node.credit<<"]\n";
         test_client.send_item(test_node);
 
         //reinitialise test node = reset data
         struct queue_node_s get_node;
-        cout<<"\n\n"<<i<<">GET\n>getting test node from client\n";
-        get_node = test_client.get_item(4);
+        cout<<"\n"<<i<<">GET\n>getting test node from client\n";
+        get_node = test_client.get_item();
 
         cout<<">test_node url=["<<get_node.url<<"] credit=["<<get_node.credit<<"]\n";
     }
