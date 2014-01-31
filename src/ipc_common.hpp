@@ -11,12 +11,11 @@
 #define MASTER_SERVICE_PORT 23331
 
 /**
- * status of crawler_worker
+ * status of crawler_thread
  */
 enum worker_status {
     ZOMBIE,         //dead
     IDLE,           //waiting for instructions
-    READY,          //configured
     ACTIVE,         //working
     SLEEP,          //blocked (queue)
     STOPPING        //will idle when current crawls complete

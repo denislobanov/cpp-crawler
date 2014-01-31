@@ -1,5 +1,5 @@
-#if !defined (CRAWLER_PROCESS_H)
-#define CRAWLER_PROCESS_H
+#if !defined (CRAWLER_THREAD_H)
+#define CRAWLER_THREAD_H
 
 #include <iostream>
 #include <vector>
@@ -20,17 +20,17 @@ class robots_txt;
  */
 #define ROBOTS_REFRESH  60*5   //seconds
 
-class crawler_worker
+class crawler_thread
 {
     public:
     /**
      * url_fifo will only be written to. parent process reads work
      * from fifo to crawler instances
      */
-    crawler_worker();
+    crawler_thread();
     //development version
-    crawler_worker(std::vector<struct tagdb_s>& parse_param);
-    ~crawler_worker(void);
+    crawler_thread(std::vector<struct tagdb_s>& parse_param);
+    ~crawler_thread(void);
 
     /**
      * crawl #i items from queue. development implementation.
@@ -45,7 +45,7 @@ class crawler_worker
     void main_loop(void);
 
     private:
-    enum worker_status status;
+    enum worker_status _status;
     struct worker_config config;
     std::string data;
 

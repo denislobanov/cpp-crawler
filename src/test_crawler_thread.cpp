@@ -1,7 +1,7 @@
 #include <iostream>
 #include <fstream>
 
-#include "crawler_worker.hpp"
+#include "crawler_thread.hpp"
 #include "netio.hpp"
 #include "page_data.hpp"
 #include "ipc_common.hpp"
@@ -32,8 +32,8 @@ int main(void)
     param.attr = "";
     parse_param.push_back(param);
 
-    cout<<"creating crawler_worker"<<endl;
-    crawler_worker test_crawler(parse_param);
+    cout<<"creating crawler_thread"<<endl;
+    crawler_thread test_crawler(parse_param);
 
     cout<<"begin crawl of "<<CRAWL_LOOPS<<" pages\n";
     test_crawler.dev_loop(CRAWL_LOOPS);

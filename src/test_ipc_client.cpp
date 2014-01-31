@@ -16,7 +16,7 @@ using std::cerr;
 using std::endl;
 using boost::asio::ip::tcp;
 
-#define GET_SEND_LOOPS  10
+#define GET_SEND_LOOPS  2048
 
 //internal static data
 static std::atomic<bool> running;

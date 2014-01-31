@@ -7,7 +7,7 @@
 #include <glibmm/ustring.h> //utf-8 strings
 #include <glibmm/convert.h> //Glib::ConvertError
 
-#include "crawler_worker.hpp"
+#include "crawler_thread.hpp"
 #include "parser.hpp"
 #include "netio.hpp"
 #include "robots_txt.hpp"
@@ -38,7 +38,7 @@
 #endif
 
 //development version, makes assumptions until IPC is in place
-crawler_worker::crawler_worker(std::vector<struct tagdb_s>& parse_param)
+crawler_thread::crawler_thread(std::vector<struct tagdb_s>& parse_param)
 {
     //pretend configuration
     status = READY;
@@ -58,19 +58,19 @@ crawler_worker::crawler_worker(std::vector<struct tagdb_s>& parse_param)
     //~ ipc.send_item(preseed_node);
 }
 
-crawler_worker::crawler_worker(void)
+crawler_thread::crawler_thread(void)
 {
     //set to idle on entry to main loop
     status = ZOMBIE;
 }
 
-crawler_worker::~crawler_worker(void)
+crawler_thread::~crawler_thread(void)
 {
     delete netio_obj;
     delete mem_mgr;
 }
 
-size_t crawler_worker::root_domain(std::string& url)
+size_t crawler_thread::root_domain(std::string& url)
 {
     //consider longest scheme name
     //  01234567
@@ -79,7 +79,7 @@ size_t crawler_worker::root_domain(std::string& url)
     return url.find_first_of("/", 8);
 }
 
-void crawler_worker::crawl(queue_node_s& work_item, struct page_data_s* page, robots_txt* robots)
+void crawler_thread::crawl(queue_node_s& work_item, struct page_data_s* page, robots_txt* robots)
 {
 #if 0
     //for dev just sleep. prod should put item back on work queue
@@ -169,16 +169,16 @@ void crawler_worker::crawl(queue_node_s& work_item, struct page_data_s* page, ro
 #endif
 }
 
-void crawler_worker::dev_loop(int i) throw(std::underflow_error)
+void crawler_thread::thread(int i) throw(std::underflow_error)
 {
-#if 0
-    while(--i) {
-        dbg<<"loops left: "<<i<<std::endl;
-
-        //get work item
+    while(worker_status != ZOMBIE) {
         try {
+            status = IDLE;
+
+            //get next work item from process queue
             queue_node_s work_item = ipc.get_item();
             status = ACTIVE;
+            dbg<<"got work_item\n";
 
             //get memory
             struct page_data_s* page = mem_mgr->get_page(work_item.url);
@@ -221,17 +221,16 @@ void crawler_worker::dev_loop(int i) throw(std::underflow_error)
             //return memory
             mem_mgr->put_robots_txt(robots, root_url);
             mem_mgr->put_page(page, work_item.url);
+
+            status = IDLE;
         } catch(std::underflow_error& e) {
             std::cerr<<"ipc work queue underrun: "<<e.what()<<std::endl;
             throw std::underflow_error("ipc_client::get_item reports empty");
         }
     }
-
-    status = IDLE;
-#endif
 }
 
-void crawler_worker::main_loop(void)
+void crawler_thread::main_loop(void)
 {
     dbg<<"not yet implemented\n";
 }
@@ -244,7 +243,7 @@ void crawler_worker::main_loop(void)
  */
 
 
-bool crawler_worker::sanitize_url_tag(struct data_node_s& d, std::string root_url)
+bool crawler_thread::sanitize_url_tag(struct data_node_s& d, std::string root_url)
 {
     bool ret = true;
 
@@ -276,7 +275,7 @@ bool crawler_worker::sanitize_url_tag(struct data_node_s& d, std::string root_ur
     return ret;
 }
 
-bool crawler_worker::is_whitespace(Glib::ustring::value_type c)
+bool crawler_thread::is_whitespace(Glib::ustring::value_type c)
 {
     switch(c) {
     case ' ':
@@ -296,7 +295,7 @@ bool crawler_worker::is_whitespace(Glib::ustring::value_type c)
 
 //tokenizes @data and stores each keyword as a seperate meta data entry,
 //does not remove duplicates.
-unsigned int crawler_worker::tokenize_meta_tag(struct page_data_s* page, Glib::ustring& data)
+unsigned int crawler_thread::tokenize_meta_tag(struct page_data_s* page, Glib::ustring& data)
 {
     unsigned int ret = 0;
 
