@@ -18,7 +18,7 @@ class robots_txt;
 /**
  * Global, part of objects interface
  */
-#define ROBOTS_REFRESH  60*5   //seconds
+#define ROBOTS_REFRESH  15*60   //15 minutes
 
 class crawler_thread
 {

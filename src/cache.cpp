@@ -232,3 +232,8 @@ void cache::prune_cache(cache_type t)
         exit(-5);
     }
 }
+
+void cache::rm_page_data(struct page_data_s* page_data, std::string& url)
+{
+    dbg<<"FIXME: cache::rm_page_data not implemented\n";
+}

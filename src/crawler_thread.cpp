@@ -82,12 +82,7 @@ size_t crawler_thread::root_domain(std::string& url)
 void crawler_thread::crawl(queue_node_s& work_item, struct page_data_s* page, robots_txt* robots)
 {
 #if 0
-    //for dev just sleep. prod should put item back on work queue
-    while(std::difftime(std::time(0), robots->last_visit) < robots->crawl_delay) {
-        status = SLEEP;
-        sleep(robots->crawl_delay);
-        dbg<<"crawl delay not reached, sleeping for "<<robots->crawl_delay<<" seconds\n";
-    }
+
     status = ACTIVE;
     robots->last_visit = std::time(0);
 
@@ -187,30 +182,44 @@ void crawler_thread::thread(int i) throw(std::underflow_error)
             robots_txt* robots = mem_mgr->get_robots_txt(root_url);
 
 
-            //check robots_txt is valid
+            //robots.txt checks
             if(std::difftime(std::time(0), robots->last_visit) >= ROBOTS_REFRESH) {
                 dbg<<"refreshing robots_txt\n";
                 robots->fetch(*netio_obj);
             }
 
             //can we crawl this page?
+            bool leak_all_credit = false;
             if(!robots->exclude(work_item.url)) {
-                if(page->crawl_count < config.day_max_crawls) {
-                    dbg<<"can crawl page\n";
+                //measures to prevent excessive crawling
+                std::chrono::hours one_day(24);
+                if(std::chrono::duration_cast<std::chrono::hours>
+                    (std::chrono::system_clock::now() - page->last_crawl) >= one_day) {
+
+                    dbg<<"page->last_visit > 24 hours, resseting count & crawling\n";
+                    page->crawl_count = 0;
                     crawl(work_item, page, robots);
+                } else if(std::difftime(std::time(0), robots->last_visit) >= robots->crawl_delay) {
 
-                } else {
-                    std::chrono::hours one_day(24);
-                    if(std::chrono::duration_cast<std::chrono::hours>
-                        (std::chrono::system_clock::now() - page->last_crawl) >= one_day) {
-                        dbg<<"can crawl papge - resetting page crawl_count\n";
-                        page->crawl_count = 0;
+                    if(page->crawl_count < config.day_max_crawls) {
+                        dbg<<"can crawl page\n";
                         crawl(work_item, page, robots);
-
                     } else {
-                        dbg<<"page exceeded day_max_crawls, will not process\n";
+                        leak_all_credit = true;
                     }
+                } else {
+                    leak_all_credit = true;
                 }
+            } else {
+                //page is excluded, send all page credit to tax, and
+                //free existing memory (it should not be stored in db)
+                dbg<<"page ["<<work_item.url<<"] excluded, removing from database & memory\n";
+                leak_all_credit = true;
+                mem_mgr->free_page(page, work_item.url);
+            }
+
+
+
             } else {
                 dbg<<"robots_txt page excluded ["<<work_item.url<<"]\n";
                 status = IDLE;

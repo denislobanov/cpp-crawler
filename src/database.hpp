@@ -25,6 +25,17 @@ class database
     void put_page_data(struct page_data_s* page_data, std::string& url);
 
     /**
+     * removes a page from database
+     */
+    void rm_page_data(struct page_data_s* page_data, std::string& url);
+
+    /**
+     * checks if the data in memory is in sync with that in the database
+     * returns true if it is.
+     */
+    bool page_in_sync(struct page_data_s* page_data, std::string& url);
+    
+    /**
      * same API for robots_txt as page_data_s
      */
     void get_robots_txt(robots_txt* robots, std::string& url);

@@ -33,7 +33,7 @@ memory_mgr::~memory_mgr(void)
     delete mem_db;
 }
 
-struct page_data_s* memory_mgr::get_page(std::string& url)
+struct page_data_s* memory_mgr::get_page(std::string& url) throw(std::exception)
 {
     struct page_data_s* page;
 
@@ -46,8 +46,9 @@ struct page_data_s* memory_mgr::get_page(std::string& url)
     }
 
     //any page returned from memory_mgr is accessible by only one worker thread
-    //database class performs simillar locking
-    page->access_lock.lock();
+    //FIXME: database class must perform similar locking!
+    if(!page->access_lock.try_lock())
+        throw std::exception("memory_mgr - cannot lock page, try later");
 
     //if page exists in cache or db it will be filled with stored data,
     //otherwise we return a blank page.
@@ -66,6 +67,9 @@ void memory_mgr::put_page(struct page_data_s* page, std::string& url)
     if(!ret) {
         dbg<<"page did not make it to cache, deleting\n";
         delete page;
+    } else {
+        //unlock page for future access.
+        page->access_lock.unlock();
     }
 }
 
@@ -79,6 +83,8 @@ robots_txt* memory_mgr::get_robots_txt(std::string& url)
         dbg<<"object not in cache, trying database\n";
         robots = new robots_txt(agent_name, url);
         mem_db->get_robots_txt(robots, url);
+    } else {
+        dbg<<"FIXME: memory_mgr needs to check if cached page is in sync with db.\n"
     }
 
     //if it exists in cache or db it will be filled with stored data,
@@ -95,6 +101,19 @@ void memory_mgr::put_robots_txt(robots_txt* robots, std::string& url)
         dbg<<"object did not make it to cache, deleting\n";
         delete robots;
     }
+}
+
+//deallocates memory used for page in cache and removes it from the database
+void memory_mgr::free_page(struct page_data_s* page, std::string& url)
+{
+    //remove page from database
+    mem_db->rm_page_data(page, url);
+
+    //remove cache entry
+    mem_cache->rm_page_data(page, url);
+
+    //free memory
+    delete page;
 }
 
 

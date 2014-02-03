@@ -16,7 +16,7 @@ class netio;
 /**
  * in the venet that robots.txt does not provide a Crawl-delay: command, use this
  */
-#define DEFAULT_CRAWL_DELAY 1
+#define DEFAULT_CRAWL_DELAY 60  //seconds
 
 #define MAX_DATA_SIZE 500*1024  //500k
 

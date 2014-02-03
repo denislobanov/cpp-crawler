@@ -69,6 +69,11 @@ class cache
     bool put_page_data(struct page_data_s* page_data, std::string& url);
 
     /**
+     * removes a page from cache
+     */
+    void rm_page_data(struct page_data_s* page_data, std::string& url);
+
+    /**
      * same API for robots_txt as page_data_s
      */
     bool get_robots_txt(robots_txt** robots, std::string& url);

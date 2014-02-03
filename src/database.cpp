@@ -332,3 +332,14 @@ void database::put_robots_txt(robots_txt* robots, std::string& url)
 
     file_data.close();
 }
+
+void database::rm_page_data(struct page_data_s* page_data, std::string& url)
+{
+    dbg<<"FIXME: database::rm_page_data not implemented\n";
+}
+
+bool database::page_in_sync(struct page_data_s* page_data, std::string& url)
+{
+    dbg<<"FIXME: database::page_in_sync not implemented\n";
+    return true;
+}

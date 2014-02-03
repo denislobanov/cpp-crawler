@@ -23,6 +23,7 @@ class memory_mgr
 
     struct page_data_s* get_page(std::string& url);
     void put_page(struct page_data_s* page, std::string& url);
+    void free_page(struct page_data_s* page, std::string& url);
 
     robots_txt* get_robots_txt(std::string& url);
     void put_robots_txt(robots_txt* robots, std::string& url);
