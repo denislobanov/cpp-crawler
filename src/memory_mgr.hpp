@@ -1,10 +1,25 @@
 #include <iostream>
+#include <stdexcept>
 
 #include "page_data.hpp"
 
 class cache;
 class database;
 class robots_txt;
+
+/**
+ * generic exception interface to memory_mgr
+ *
+ * TODO: create a universal crawler_exception?
+ */
+struct memory_exception: std::exception {
+    std::string message;
+    const char* what() const noexcept
+    {
+        return message.c_str();
+    }
+    memory_exception(std::string s): message(s) {};
+};
 
 /**
  * controls allocating/deletion of page_data_s'
@@ -21,7 +36,7 @@ class memory_mgr
     memory_mgr(std::string database_path, std::string user_agent);
     ~memory_mgr(void);
 
-    struct page_data_s* get_page(std::string& url);
+    struct page_data_s* get_page(std::string& url) throw(std::exception);
     void put_page(struct page_data_s* page, std::string& url);
     void free_page(struct page_data_s* page, std::string& url);
 

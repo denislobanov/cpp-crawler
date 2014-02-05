@@ -1,4 +1,5 @@
 #include <iostream>
+#include <stdexcept>
 
 #include "memory_mgr.hpp"
 #include "cache.hpp"
@@ -43,12 +44,14 @@ struct page_data_s* memory_mgr::get_page(std::string& url) throw(std::exception)
         dbg<<"page not in cache, trying database\n";
         page = new struct page_data_s;
         mem_db->get_page_data(page, url);
+    } else {
+        dbg<<"FIXME: memory_mgr needs to check if cached page is in sync with db.\n";
     }
 
     //any page returned from memory_mgr is accessible by only one worker thread
     //FIXME: database class must perform similar locking!
     if(!page->access_lock.try_lock())
-        throw std::exception("memory_mgr - cannot lock page, try later");
+        throw memory_exception("memory_mgr - cannot lock page, try later");
 
     //if page exists in cache or db it will be filled with stored data,
     //otherwise we return a blank page.
@@ -84,8 +87,10 @@ robots_txt* memory_mgr::get_robots_txt(std::string& url)
         robots = new robots_txt(agent_name, url);
         mem_db->get_robots_txt(robots, url);
     } else {
-        dbg<<"FIXME: memory_mgr needs to check if cached page is in sync with db.\n"
+        dbg<<"FIXME: memory_mgr needs to check if cached robots_txt is in sync with db.\n";
     }
+
+    ++robots->use_count;
 
     //if it exists in cache or db it will be filled with stored data,
     //otherwise we return a new robots_txt object
@@ -97,7 +102,9 @@ void memory_mgr::put_robots_txt(robots_txt* robots, std::string& url)
     mem_db->put_robots_txt(robots, url);
     bool ret = mem_cache->put_robots_txt(robots, url);
 
-    if(!ret) {
+    //free object only if no-one else is using it
+    --robots->use_count;
+    if((robots->use_count == 0) && !ret) {
         dbg<<"object did not make it to cache, deleting\n";
         delete robots;
     }

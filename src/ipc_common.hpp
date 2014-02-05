@@ -15,10 +15,10 @@
  */
 enum worker_status {
     ZOMBIE,         //dead
+    STOP,           //will die when current crawls complete
     IDLE,           //waiting for instructions
     ACTIVE,         //working
     SLEEP,          //blocked (queue)
-    STOPPING        //will idle when current crawls complete
 };
 
 /**

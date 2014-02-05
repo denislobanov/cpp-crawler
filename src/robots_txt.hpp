@@ -4,6 +4,7 @@
 #include <iostream>
 #include <ctime>
 #include <vector>
+#include <atomic>
 
 class netio;
 
@@ -22,6 +23,8 @@ class netio;
 
 class robots_txt
 {
+    friend class memory_mgr;
+
     public:
     /**
      * creates a robots_txt parser instance.
@@ -76,6 +79,8 @@ class robots_txt
     private:
     bool can_crawl; //if crawler's completely banned or a whitelist policy is used
     bool process_param;
+    //used as a semaphore for freeing memory via memory_mgr
+    std::atomic<unsigned int> use_count;
 
     std::string agent_name;
     std::string domain;

@@ -3,9 +3,9 @@
 #include <string>
 #include <stdexcept>
 #include <ctime>
-#include <unistd.h>         //sleep()
 #include <glibmm/ustring.h> //utf-8 strings
 #include <glibmm/convert.h> //Glib::ConvertError
+#include <thread>
 
 #include "crawler_thread.hpp"
 #include "parser.hpp"
@@ -18,6 +18,8 @@
 
 //Local defines
 #define DEBUG 4
+#define CREDIT_TAX_PERCENT 10
+#define CREDIT_TAX_ALL 100
 
 #if defined(DEBUG)
     #define dbg std::cout<<__FILE__<<"("<<__LINE__<<"): "
@@ -37,31 +39,11 @@
     #define dbg_2 0 && std::cout
 #endif
 
-//development version, makes assumptions until IPC is in place
-crawler_thread::crawler_thread(std::vector<struct tagdb_s>& parse_param)
-{
-    //pretend configuration
-    status = READY;
-    config.db_path = "./test_db";
-    config.user_agent = "lcpp test";
-    config.day_max_crawls = 3;
-    config.parse_param = parse_param;
-
-    netio_obj = new netio(config.user_agent);
-    mem_mgr = new memory_mgr(config.db_path, config.user_agent);
-
-    //test seed to queue
-    //~ dbg<<"seed url is: "<<SEED_URL<<" initial credit "<<SEED_CREDIT<<std::endl;
-    //~ struct queue_node_s preseed_node;
-    //~ preseed_node.url = SEED_URL;
-    //~ preseed_node.credit = SEED_CREDIT;
-    //~ ipc.send_item(preseed_node);
-}
-
-crawler_thread::crawler_thread(void)
+crawler_thread::crawler_thread(ipc_client* ipc_obj)
 {
     //set to idle on entry to main loop
-    status = ZOMBIE;
+    _status = SLEEP;
+    ipc = ipc_obj;
 }
 
 crawler_thread::~crawler_thread(void)
@@ -81,25 +63,18 @@ size_t crawler_thread::root_domain(std::string& url)
 
 void crawler_thread::crawl(queue_node_s& work_item, struct page_data_s* page, robots_txt* robots)
 {
-#if 0
-
-    status = ACTIVE;
-    robots->last_visit = std::time(0);
-
-    //page rank housekeeping
-    page->rank += work_item.credit;
-
     //parse page
-    parser single_parser(work_item.url);
-    single_parser.parse(config.parse_param);
-    if(!single_parser.data.empty()) {
-        //replaced by that returned from the crawl
+    parser page_parser(work_item.url);
+    page_parser.parse(cfg.parse_param);
+
+    if(!page_parser.data.empty()) {
+        //will be replaced by new data from parser
         page->meta.clear();
+
         //process data, calculating page ranking
         unsigned int linked_pages = 0;
-
         try {
-            for(auto& d: single_parser.data) {
+            for(auto& d: page_parser.data) {
                 dbg_2<<"tag name ["<<d.tag_name<<"] tag data ["<<d.tag_data<<"] attr_data ["<<d.attr_data<<"]\n";
 
                 switch(d.tag_type) {
@@ -122,9 +97,14 @@ void crawler_thread::crawl(queue_node_s& work_item, struct page_data_s* page, ro
                 case title:
                     if(!d.tag_data.empty()) {
                         page->title = d.tag_data;
-                        //FIXME: development only
-                        page->description = d.tag_data;
                         dbg_2<<"found title ["<<d.tag_data<<"]\n";
+                    }
+                    break;
+
+                case description:
+                    if(!d.tag_data.empty()) {
+                        page->description += d.tag_data;
+                        dbg_2<<"found page description str, adding ["<<d.tag_data<<"]\n";
                     }
                     break;
 
@@ -138,41 +118,42 @@ void crawler_thread::crawl(queue_node_s& work_item, struct page_data_s* page, ro
             std::cerr<<"got a convert error  -- "<<e.what();
         }
 
-        //FIXME: tax page here
         dbg<<"page->rank "<<page->rank<<" linked_pages "<<linked_pages<<std::endl;
-        unsigned int new_credit = 0;
-        if(page->rank > 0 && linked_pages > 0)
-            new_credit = page->rank/linked_pages;
+        page->rank = tax(page->rank, CREDIT_TAX_PERCENT);
+        dbg<<"page->rank after tax: "<<page->rank<<std::endl;
 
+        unsigned int transfer_credit = 0;
+        if(page->rank > 0 && linked_pages > 0)
+            transfer_credit = page->rank/linked_pages;
         page->rank = 0;
+
         ++page->crawl_count;
         page->last_crawl = std::chrono::system_clock::now();
-        dbg<<" new_credit "<<new_credit<<std::endl;
+        dbg<<"page->crawl_count "<<page->crawl_count<<" transfer_credit "<<transfer_credit<<std::endl;
 
-        //put new urls on IPC work queue
-        for(auto& d: single_parser.data) {
+        //new URLs used to generate work_items
+        for(auto& d: page_parser.data) {
             queue_node_s new_item;
 
             if(d.tag_type == url) {
                 new_item.url = d.attr_data;
-                new_item.credit = new_credit;
-                ipc.send_item(new_item);
+                new_item.credit = transfer_credit;
+                ipc->send_item(new_item);
                 dbg_2<<"added ["<<new_item.url<<"] to queue\n";
             }
         }
     }
-#endif
 }
 
-void crawler_thread::thread(int i) throw(std::underflow_error)
+void crawler_thread::thread() throw(std::underflow_error)
 {
-    while(worker_status != ZOMBIE) {
+    while(_status > STOP) {
         try {
-            status = IDLE;
+            _status = IDLE;
 
             //get next work item from process queue
-            queue_node_s work_item = ipc.get_item();
-            status = ACTIVE;
+            queue_node_s work_item = ipc->get_item();
+            _status = ACTIVE;
             dbg<<"got work_item\n";
 
             //get memory
@@ -186,6 +167,7 @@ void crawler_thread::thread(int i) throw(std::underflow_error)
             if(std::difftime(std::time(0), robots->last_visit) >= ROBOTS_REFRESH) {
                 dbg<<"refreshing robots_txt\n";
                 robots->fetch(*netio_obj);
+                robots->last_visit = std::time(0);
             }
 
             //can we crawl this page?
@@ -198,13 +180,10 @@ void crawler_thread::thread(int i) throw(std::underflow_error)
 
                     dbg<<"page->last_visit > 24 hours, resseting count & crawling\n";
                     page->crawl_count = 0;
-                    crawl(work_item, page, robots);
                 } else if(std::difftime(std::time(0), robots->last_visit) >= robots->crawl_delay) {
 
-                    if(page->crawl_count < config.day_max_crawls) {
-                        dbg<<"can crawl page\n";
-                        crawl(work_item, page, robots);
-                    } else {
+                    if(page->crawl_count >= cfg.day_max_crawls) {
+                        dbg<<"page->crawl_count >= cfg.day_max_crawls\n";
                         leak_all_credit = true;
                     }
                 } else {
@@ -215,34 +194,80 @@ void crawler_thread::thread(int i) throw(std::underflow_error)
                 //free existing memory (it should not be stored in db)
                 dbg<<"page ["<<work_item.url<<"] excluded, removing from database & memory\n";
                 leak_all_credit = true;
-                mem_mgr->free_page(page, work_item.url);
             }
 
-
-
-            } else {
-                dbg<<"robots_txt page excluded ["<<work_item.url<<"]\n";
-                status = IDLE;
-
-                //page credits to tax instead
-            }
-
-            //return memory
+            //robots_txt no longer needed
             mem_mgr->put_robots_txt(robots, root_url);
-            mem_mgr->put_page(page, work_item.url);
 
-            status = IDLE;
+            if(leak_all_credit) {
+                tax(work_item.credit + page->rank, CREDIT_TAX_ALL);
+                page->rank = 0;
+
+                mem_mgr->free_page(page, work_item.url);
+            } else {
+                //add referrer credit
+                page->rank += work_item.credit;
+
+                crawl(work_item, page, robots);
+                mem_mgr->put_page(page, work_item.url);
+            }
+
+            _status = IDLE;
         } catch(std::underflow_error& e) {
+            _status = ZOMBIE;
             std::cerr<<"ipc work queue underrun: "<<e.what()<<std::endl;
             throw std::underflow_error("ipc_client::get_item reports empty");
         }
     }
 }
 
-void crawler_thread::main_loop(void)
+unsigned int crawler_thread::tax(unsigned int credit, unsigned int percent)
 {
-    dbg<<"not yet implemented\n";
+    unsigned int leak = (credit/100)*percent;
+    dbg<<"credit post tax: "<<credit-leak<<" (taxed: "<<leak<<")\n";
+
+    return credit-leak;
 }
+
+//try and get config via ipc_client
+void crawler_thread::start(void)
+{
+    cfg = ipc->get_config();
+    netio_obj = new netio(cfg.user_agent);
+    mem_mgr = new memory_mgr(cfg.db_path, cfg.user_agent);
+
+    launch_thread();
+}
+
+//pre-defined config data
+void crawler_thread::start(worker_config& config)
+{
+    cfg = config;
+    netio_obj = new netio(cfg.user_agent);
+    mem_mgr = new memory_mgr(cfg.db_path, cfg.user_agent);
+
+    launch_thread();
+}
+
+//pointless?
+void crawler_thread::stop(void)
+{
+    _status = STOP;
+}
+
+void crawler_thread::launch_thread(void)
+{
+    std::thread(&crawler_thread::thread, this);
+    dbg<<"launched thread\n";
+
+    //main_thread.detatch()
+}
+
+worker_status crawler_thread::status(void)
+{
+    return _status;
+}
+
 
 /* to do
  * use new tagdb_s configuration structur
@@ -250,7 +275,6 @@ void crawler_thread::main_loop(void)
  * fix up missing domain, scheme etc
  *  - handle relative links
  */
-
 
 bool crawler_thread::sanitize_url_tag(struct data_node_s& d, std::string root_url)
 {
