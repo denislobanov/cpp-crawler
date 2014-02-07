@@ -63,9 +63,6 @@ void memory_mgr::put_page(struct page_data_s* page, std::string& url)
     mem_db->put_page_data(page, url);
     bool ret = mem_cache->put_page_data(page, url);
 
-    //unlock page for future access.
-    page->access_lock.unlock();
-
     //pages that dont make it into the cache get deleted
     if(!ret) {
         dbg<<"page did not make it to cache, deleting\n";
@@ -113,6 +110,8 @@ void memory_mgr::put_robots_txt(robots_txt* robots, std::string& url)
 //deallocates memory used for page in cache and removes it from the database
 void memory_mgr::free_page(struct page_data_s* page, std::string& url)
 {
+    dbg<<"freeing page\n";
+
     //remove page from database
     mem_db->rm_page_data(page, url);
 

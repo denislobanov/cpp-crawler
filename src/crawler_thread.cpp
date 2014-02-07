@@ -52,13 +52,43 @@ crawler_thread::~crawler_thread(void)
     delete mem_mgr;
 }
 
-size_t crawler_thread::root_domain(std::string& url)
+//try and get config via ipc_client
+void crawler_thread::start(void)
 {
-    //consider longest scheme name
-    //  01234567
-    // "https://" next "/" is at the end of the root url
-    dbg<<"url ["<<url<<"] root domain is char 0 -> "<<url.find_first_of("/", 8)<<std::endl;
-    return url.find_first_of("/", 8);
+    cfg = ipc->get_config();
+    netio_obj = new netio(cfg.user_agent);
+    mem_mgr = new memory_mgr(cfg.db_path, cfg.user_agent);
+
+    launch_thread();
+}
+
+//pre-defined config data
+void crawler_thread::start(worker_config& config)
+{
+    cfg = config;
+    netio_obj = new netio(cfg.user_agent);
+    mem_mgr = new memory_mgr(cfg.db_path, cfg.user_agent);
+
+    launch_thread();
+}
+
+//pointless?
+void crawler_thread::stop(void)
+{
+    _status = STOP;
+}
+
+worker_status crawler_thread::status(void)
+{
+    return _status;
+}
+
+void crawler_thread::launch_thread(void)
+{
+    main_thread = std::thread(&crawler_thread::thread, this);
+    dbg<<"launched thread\n";
+
+    //main_thread.detatch()
 }
 
 void crawler_thread::crawl(queue_node_s& work_item, struct page_data_s* page, robots_txt* robots)
@@ -118,6 +148,8 @@ void crawler_thread::crawl(queue_node_s& work_item, struct page_data_s* page, ro
             std::cerr<<"got a convert error  -- "<<e.what();
         }
 
+        //add referrer credit
+        page->rank += work_item.credit;
         dbg<<"page->rank "<<page->rank<<" linked_pages "<<linked_pages<<std::endl;
         page->rank = tax(page->rank, CREDIT_TAX_PERCENT);
         dbg<<"page->rank after tax: "<<page->rank<<std::endl;
@@ -180,14 +212,17 @@ void crawler_thread::thread() throw(std::underflow_error)
 
                     dbg<<"page->last_visit > 24 hours, resseting count & crawling\n";
                     page->crawl_count = 0;
+                    crawl(work_item, page, robots);
                 } else if(std::difftime(std::time(0), robots->last_visit) >= robots->crawl_delay) {
 
                     if(page->crawl_count >= cfg.day_max_crawls) {
                         dbg<<"page->crawl_count >= cfg.day_max_crawls\n";
                         leak_all_credit = true;
                     }
+                    crawl(work_item, page, robots);
                 } else {
-                    leak_all_credit = true;
+                    //re-queue page for later processing
+                    ipc->send_item(work_item);
                 }
             } else {
                 //page is excluded, send all page credit to tax, and
@@ -199,19 +234,19 @@ void crawler_thread::thread() throw(std::underflow_error)
             //robots_txt no longer needed
             mem_mgr->put_robots_txt(robots, root_url);
 
+            //return or remove page
             if(leak_all_credit) {
                 tax(work_item.credit + page->rank, CREDIT_TAX_ALL);
                 page->rank = 0;
 
                 mem_mgr->free_page(page, work_item.url);
+                //FIXME: for now, as free_page is a dummy function
+                mem_mgr->put_page(page, work_item.url);
             } else {
-                //add referrer credit
-                page->rank += work_item.credit;
-
-                crawl(work_item, page, robots);
                 mem_mgr->put_page(page, work_item.url);
             }
 
+            dbg<<">done.\n";
             _status = IDLE;
         } catch(std::underflow_error& e) {
             _status = ZOMBIE;
@@ -224,50 +259,19 @@ void crawler_thread::thread() throw(std::underflow_error)
 unsigned int crawler_thread::tax(unsigned int credit, unsigned int percent)
 {
     unsigned int leak = (credit/100)*percent;
-    dbg<<"credit post tax: "<<credit-leak<<" (taxed: "<<leak<<")\n";
+    dbg<<"credit pre tax: "<<credit<<" post tax: "<<credit-leak<<" (taxed: "<<leak<<" @ "<<percent<<"%)\n";
 
     return credit-leak;
 }
 
-//try and get config via ipc_client
-void crawler_thread::start(void)
+size_t crawler_thread::root_domain(std::string& url)
 {
-    cfg = ipc->get_config();
-    netio_obj = new netio(cfg.user_agent);
-    mem_mgr = new memory_mgr(cfg.db_path, cfg.user_agent);
-
-    launch_thread();
+    //consider longest scheme name
+    //  01234567
+    // "https://" next "/" is at the end of the root url
+    dbg<<"url ["<<url<<"] root domain is char 0 -> "<<url.find_first_of("/", 8)<<std::endl;
+    return url.find_first_of("/", 8);
 }
-
-//pre-defined config data
-void crawler_thread::start(worker_config& config)
-{
-    cfg = config;
-    netio_obj = new netio(cfg.user_agent);
-    mem_mgr = new memory_mgr(cfg.db_path, cfg.user_agent);
-
-    launch_thread();
-}
-
-//pointless?
-void crawler_thread::stop(void)
-{
-    _status = STOP;
-}
-
-void crawler_thread::launch_thread(void)
-{
-    std::thread(&crawler_thread::thread, this);
-    dbg<<"launched thread\n";
-
-    //main_thread.detatch()
-}
-
-worker_status crawler_thread::status(void)
-{
-    return _status;
-}
-
 
 /* to do
  * use new tagdb_s configuration structur

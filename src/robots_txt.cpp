@@ -8,6 +8,8 @@
 #include "netio.hpp"
 
 //Local defines
+#define DEBUG 1
+
 #if (defined(DEBUG))&&(DEBUG > 2)
 #include <fstream>
 #endif
@@ -63,14 +65,18 @@ void robots_txt::fetch(netio& netio_obj)
 
 bool robots_txt::exclude(std::string& path)
 {
-    if(!can_crawl)
+    if(!can_crawl) {
+        std::cout<<"!can_crawl\n";
         return true;
+    }
 
     size_t pos = domain.length();
 
     for(std::vector<std::string>::iterator it = disallow_list.begin(); it != disallow_list.end(); ++it) {
-        if(path.compare(pos, it->size(), *it) == 0)
+        if(path.compare(pos, it->size(), *it) == 0) {
+            std::cout<<"url = ["<<path<<"] matches exclusion "<<*it<<std::endl;
             return true;
+        }
     }
 
     return false;

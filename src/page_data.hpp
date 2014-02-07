@@ -16,6 +16,7 @@ struct page_data_s {
     unsigned int crawl_count;
     std::chrono::system_clock::time_point last_crawl;
     std::vector<std::string> out_links;
+    Glib::ustring url;
 
     //descriptive
     Glib::ustring title;              //page title
