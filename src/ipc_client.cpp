@@ -15,7 +15,7 @@
 #include "connection.hpp"
 
 //Local defines
-#define DEBUG 2
+#define DEBUG 1
 
 #if defined(DEBUG)
     #define dbg std::cout<<__FILE__<<"("<<__LINE__<<") "<<__func__<<": "
@@ -136,7 +136,7 @@ void ipc_client::send_qnode(const boost::system::error_code& ec) throw(std::exce
         if(send_data) {
             send_data = false;
 
-            dbg_1<<"sending node to master, send_buffer.size(): "<<send_buffer.size()<<std::endl;
+            dbg<<"sending node to master, send_buffer.size(): "<<send_buffer.size()<<std::endl;
             connection_.wdata_type(queue_node);
             connection_.wdata(send_buffer.pop());
 

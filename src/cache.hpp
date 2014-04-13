@@ -26,7 +26,7 @@ class database;
 struct cache_entry_s {
     //each entry should only store one
     page_data_s* page;
-    robots_txt *robots;
+    robots_txt* robots;
 
     std::chrono::steady_clock::time_point timestamp;
 };

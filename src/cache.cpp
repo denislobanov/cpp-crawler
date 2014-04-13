@@ -90,7 +90,6 @@ bool cache::put_page_data(struct page_data_s* page_data, std::string& url)
         entry.page = page_data;
         entry.timestamp = new_time;
 
-
         //pages not in cache will need to be added in, if there's space
         if(page_ctl.fill < PAGE_CACHE_MAX) {
             dbg<<"space in cache to insert page ["<<url<<"]\n";
@@ -221,9 +220,11 @@ void cache::prune_cache(cache_type t)
     while(ctl->fill-(max_fill-reserve) > 0) {
         dbg_1<<"pages to prune "<<ctl->fill-(max_fill-reserve)<<std::endl;
 
-        //free memory
-        delete dm->at(am->begin()->second).page;
-        delete dm->at(am->begin()->second).robots;
+        //make this a void entry and cast as needed?
+        if(t == PAGE)
+            delete dm->at(am->begin()->second).page;
+        else
+            delete dm->at(am->begin()->second).robots;
 
         dm->erase(dm->find(am->begin()->second));
         am->erase(am->begin());
@@ -235,5 +236,20 @@ void cache::prune_cache(cache_type t)
 
 void cache::rm_page_data(struct page_data_s* page_data, std::string& url)
 {
-    dbg<<"FIXME: cache::rm_page_data not implemented\n";
+    dbg<<"removening page ["<<url<<"] from cache\n";
+
+    page_ctl.rw_mutex.lock();
+    try {
+        //reverse lookup access map entries (ame) based on page_cache data
+        std::chrono::steady_clock::time_point ame;
+        ame = page_cache.at(url).timestamp;
+        dbg<<"removing page from access map\n";
+        page_access.erase(page_access.find(ame));
+
+        dbg<<"removing page from cache\n";
+        page_cache.erase(url);
+    } catch(const std::out_of_range& e) {
+        dbg<<"cannot delete - page not in cache\n";
+    }
+    page_ctl.rw_mutex.unlock();
 }

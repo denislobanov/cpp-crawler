@@ -210,7 +210,7 @@ void crawler_thread::thread() throw(std::underflow_error)
                 if(std::chrono::duration_cast<std::chrono::hours>
                     (std::chrono::system_clock::now() - page->last_crawl) >= one_day) {
 
-                    dbg<<"page->last_visit > 24 hours, resseting count & crawling\n";
+                    dbg<<"page->last_visit > 24 hours, resetting count & crawling\n";
                     page->crawl_count = 0;
                     crawl(work_item, page, robots);
                 } else if(std::difftime(std::time(0), robots->last_visit) >= robots->crawl_delay) {
@@ -238,10 +238,7 @@ void crawler_thread::thread() throw(std::underflow_error)
             if(leak_all_credit) {
                 tax(work_item.credit + page->rank, CREDIT_TAX_ALL);
                 page->rank = 0;
-
                 mem_mgr->free_page(page, work_item.url);
-                //FIXME: for now, as free_page is a dummy function
-                mem_mgr->put_page(page, work_item.url);
             } else {
                 mem_mgr->put_page(page, work_item.url);
             }
@@ -258,7 +255,7 @@ void crawler_thread::thread() throw(std::underflow_error)
 
 unsigned int crawler_thread::tax(unsigned int credit, unsigned int percent)
 {
-    unsigned int leak = (credit/100)*percent;
+    unsigned int leak = credit*(percent/100);
     dbg<<"credit pre tax: "<<credit<<" post tax: "<<credit-leak<<" (taxed: "<<leak<<" @ "<<percent<<"%)\n";
 
     return credit-leak;
@@ -269,8 +266,12 @@ size_t crawler_thread::root_domain(std::string& url)
     //consider longest scheme name
     //  01234567
     // "https://" next "/" is at the end of the root url
-    dbg<<"url ["<<url<<"] root domain is char 0 -> "<<url.find_first_of("/", 8)<<std::endl;
-    return url.find_first_of("/", 8);
+    size_t ret = url.find_first_of("/", 8);
+    if(ret > url.length())
+        ret = url.length();
+
+    dbg<<"url ["<<url<<"] root domain is char 0 -> "<<ret<<std::endl;
+    return ret;
 }
 
 /* to do

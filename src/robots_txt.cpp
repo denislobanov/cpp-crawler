@@ -8,7 +8,7 @@
 #include "netio.hpp"
 
 //Local defines
-#define DEBUG 1
+//~ #define DEBUG 1
 
 #if (defined(DEBUG))&&(DEBUG > 2)
 #include <fstream>

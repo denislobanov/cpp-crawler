@@ -100,7 +100,7 @@ class dummy_server
                     break;
 
                 case w_get_work:
-                    cout<<">server: sending queue_node_s\n";
+                    cout<<">server: sending queue_node_s to client\n";
                     node_buffer.pop(ipc_qnode);
 
                     connection_.wdata_type(queue_node);
@@ -110,7 +110,7 @@ class dummy_server
                     break;
 
                 case w_send_work:
-                    cout<<">server: about to get a queue_node_s\n";
+                    cout<<">server: client about to send a queue_node_s\n";
                     connection_.async_read(boost::bind(&dummy_server::read_qnode,
                         this, boost::asio::placeholders::error));
                     break;

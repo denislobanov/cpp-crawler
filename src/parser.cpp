@@ -11,7 +11,7 @@
 #include "ipc_common.hpp"
 
 //Local defines
-#define DEBUG 0
+//~ #define DEBUG 0
 
 #if (defined(DEBUG))&&(DEBUG > 2)
 #include <fstream>
@@ -75,7 +75,7 @@ void parser::save_nodes(struct tagdb_s& param)
         try {
             dbg_2<<"tag name ["<<data_entry.tag_name<<"] tag data ["<<data_entry.tag_data<<"] attr_data ["<<data_entry.attr_data<<"]\n";
         } catch(Glib::ConvertError& e) {
-            std::cerr<<"shit yo, get a better error message. also: "<<e.what();
+            std::cerr<<"Glb conversion error: "<<e.what();
         }
         data.push_back(data_entry);
     }

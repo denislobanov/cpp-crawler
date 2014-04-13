@@ -5,6 +5,7 @@
 #include <glibmm/ustring.h>
 #include <chrono>
 #include <glib.h>
+#include <stdio.h>
 
 #include "database.hpp"
 #include "page_data.hpp"
@@ -335,7 +336,22 @@ void database::put_robots_txt(robots_txt* robots, std::string& url)
 
 void database::rm_page_data(struct page_data_s* page_data, std::string& url)
 {
-    dbg<<"FIXME: database::rm_page_data not implemented\n";
+    std::hash<std::string> url_hash;
+    std::stringstream ss;
+    std::string filename;
+
+    //create filename
+    ss<<url_hash(url);
+    filename = db_path+"/page_data/"+ss.str();
+    dbg<<"deleting page ["<<filename<<" ["<<url<<"]]\n";
+
+    //avoid concurrent writes to the same file
+    file_io_lock.lock();
+    int ret = remove(filename.c_str());
+    file_io_lock.unlock();
+
+    if(!ret)
+        dbg<<"failed to delete page ["<<filename<<"]\n";
 }
 
 bool database::page_in_sync(struct page_data_s* page_data, std::string& url)
