@@ -65,13 +65,13 @@ class crawler_thread
     ipc_client* ipc;
 
     size_t root_domain(std::string& url);
-    void crawl(queue_node_s& work_item, struct page_data_s* page, robots_txt* robots);
+    void crawl(queue_node_s& work_item, page_data_c* page, robots_txt* robots);
     void thread() throw(std::underflow_error);
     unsigned int tax(unsigned int credit, unsigned int percent);
     void launch_thread(void);
     bool sanitize_url_tag(struct data_node_s& d, std::string root_url);
     bool is_whitespace(Glib::ustring::value_type c);
-    unsigned int tokenize_meta_tag(struct page_data_s* page, Glib::ustring& data);
+    unsigned int tokenize_meta_tag(page_data_c* page, Glib::ustring& data);
 };
 
 #endif

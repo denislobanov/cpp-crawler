@@ -91,7 +91,7 @@ void crawler_thread::launch_thread(void)
     //main_thread.detatch()
 }
 
-void crawler_thread::crawl(queue_node_s& work_item, struct page_data_s* page, robots_txt* robots)
+void crawler_thread::crawl(queue_node_s& work_item, page_data_c* page, robots_txt* robots)
 {
     //parse page
     parser page_parser(work_item.url);
@@ -189,7 +189,7 @@ void crawler_thread::thread() throw(std::underflow_error)
             dbg<<"got work_item\n";
 
             //get memory
-            struct page_data_s* page = mem_mgr->get_page(work_item.url);
+            page_data_c* page = mem_mgr->get_page(work_item.url);
             std::string root_url(work_item.url, 0, root_domain(work_item.url));
             dbg<<"root_url ["<<root_url<<"]\n";
             robots_txt* robots = mem_mgr->get_robots_txt(root_url);
@@ -333,7 +333,7 @@ bool crawler_thread::is_whitespace(Glib::ustring::value_type c)
 
 //tokenizes @data and stores each keyword as a seperate meta data entry,
 //does not remove duplicates.
-unsigned int crawler_thread::tokenize_meta_tag(struct page_data_s* page, Glib::ustring& data)
+unsigned int crawler_thread::tokenize_meta_tag(page_data_c* page, Glib::ustring& data)
 {
     unsigned int ret = 0;
 

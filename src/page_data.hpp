@@ -5,13 +5,17 @@
 #include <mutex>
 #include <glibmm/ustring.h>
 #include <chrono>
-
+#include <boost/serialization/vector.hpp>
 
 /**
  * describes an entry to pass to caching/db mechanism
  */
-struct page_data_s {
-    //meta
+class page_data_c
+{
+    public:
+    friend class boost::serialization::access;
+
+    //page meta data
     unsigned int rank;
     unsigned int crawl_count;
     std::chrono::system_clock::time_point last_crawl;
@@ -23,7 +27,21 @@ struct page_data_s {
     Glib::ustring description;        //short blob about page
     std::vector<Glib::ustring> meta;  //keywords associated with page
 
-    //house keeping
+    template<class Archive>
+    void serialize(Archive& ar, const unsigned int version)
+    {
+        ar & rank;
+        ar & crawl_count;
+        ar & last_crawl;
+        ar & out_links;
+        ar & url;
+        ar & title;
+        ar & description;
+        ar & meta;
+    }
+
+    private:
+    friend class cache;
     std::mutex access_lock; //only one thread may access at a time, managed by cache class
 };
 

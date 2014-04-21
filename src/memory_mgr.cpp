@@ -3,7 +3,7 @@
 
 #include "memory_mgr.hpp"
 #include "cache.hpp"
-#include "database.hpp"
+#include "file_db.hpp"
 #include "page_data.hpp"
 
 //Local defines
@@ -30,19 +30,22 @@ memory_mgr::memory_mgr(std::string database_path, std::string user_agent)
 
 memory_mgr::~memory_mgr(void)
 {
+    //currently frees all cached memory, should be handled by this class instead.
     delete mem_cache;
     delete mem_db;
+
+    //store unordered map of all allocated data. free all pointers.
 }
 
-struct page_data_s* memory_mgr::get_page(std::string& url) throw(std::exception)
+page_data_c* memory_mgr::get_page(std::string& url) throw(std::exception)
 {
-    struct page_data_s* page;
+    page_data_c* page;
 
     //if cache fails to retrieve page, get it from the db
     dbg<<"trying to get page from cache\n";
     if(!mem_cache->get_page_data(&page, url)) {
         dbg<<"page not in cache, trying database\n";
-        page = new struct page_data_s;
+        page = new page_data_c;
         mem_db->get_page_data(page, url);
     } else {
         dbg<<"FIXME: memory_mgr needs to check if cached page is in sync with db.\n";
@@ -58,7 +61,7 @@ struct page_data_s* memory_mgr::get_page(std::string& url) throw(std::exception)
     return page;
 }
 
-void memory_mgr::put_page(struct page_data_s* page, std::string& url)
+void memory_mgr::put_page(page_data_c* page, std::string& url)
 {
     mem_db->put_page_data(page, url);
     bool ret = mem_cache->put_page_data(page, url);
@@ -108,7 +111,7 @@ void memory_mgr::put_robots_txt(robots_txt* robots, std::string& url)
 }
 
 //deallocates memory used for page in cache and removes it from the database
-void memory_mgr::free_page(struct page_data_s* page, std::string& url)
+void memory_mgr::free_page(page_data_c* page, std::string& url)
 {
     dbg<<"freeing page\n";
 

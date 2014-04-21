@@ -12,7 +12,7 @@
 
 class database;
 
-//total number of robots_txt/page_data_s entries stored in cache
+//total number of robots_txt/page_data_c entries stored in cache
 #define PAGE_CACHE_MAX   10
 #define ROBOTS_CACHE_MAX 10
 //TO DO: number of entries to keep free
@@ -25,7 +25,7 @@ class database;
  */
 struct cache_entry_s {
     //each entry should only store one
-    page_data_s* page;
+    page_data_c* page;
     robots_txt* robots;
 
     std::chrono::steady_clock::time_point timestamp;
@@ -57,24 +57,24 @@ class cache
     ~cache(void);
 
     /**
-     * url is hashed and a page_data_s retrieved.
+     * url is hashed and a page_data_c retrieved.
      * returns true if a page was found in cache
      */
-    bool get_page_data(struct page_data_s** page_data, std::string& url);
+    bool get_page_data(page_data_c** page_data, std::string& url);
 
     /**
      * page is potentially cached, depending on criteria and sent to the db
      * returns true if a page makes it to cache
      */
-    bool put_page_data(struct page_data_s* page_data, std::string& url);
+    bool put_page_data(page_data_c* page_data, std::string& url);
 
     /**
      * removes a page from cache
      */
-    void rm_page_data(struct page_data_s* page_data, std::string& url);
+    void rm_page_data(page_data_c* page_data, std::string& url);
 
     /**
-     * same API for robots_txt as page_data_s
+     * same API for robots_txt as page_data_c
      */
     bool get_robots_txt(robots_txt** robots, std::string& url);
     bool put_robots_txt(robots_txt* robots, std::string& url);

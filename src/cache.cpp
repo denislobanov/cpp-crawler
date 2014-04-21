@@ -5,7 +5,7 @@
 #include <chrono>
 
 #include "cache.hpp"
-#include "database.hpp"
+#include "file_db.hpp"
 #include "robots_txt.hpp"
 #include "page_data.hpp"
 
@@ -53,7 +53,7 @@ void cache::update_timestamp(data_map_t& dm, access_map_t& am, std::string url, 
     am.insert(std::pair<std::chrono::steady_clock::time_point, std::string>(new_time, url));
 }
 
-bool cache::get_page_data(struct page_data_s** page_data, std::string& url)
+bool cache::get_page_data(page_data_c** page_data, std::string& url)
 {
     bool in_cache = false;
 
@@ -74,7 +74,7 @@ bool cache::get_page_data(struct page_data_s** page_data, std::string& url)
     return in_cache;
 }
 
-bool cache::put_page_data(struct page_data_s* page_data, std::string& url)
+bool cache::put_page_data(page_data_c* page_data, std::string& url)
 {
     bool in_cache = true;
     std::chrono::steady_clock::time_point new_time = std::chrono::steady_clock::now();
@@ -234,7 +234,7 @@ void cache::prune_cache(cache_type t)
     }
 }
 
-void cache::rm_page_data(struct page_data_s* page_data, std::string& url)
+void cache::rm_page_data(page_data_c* page_data, std::string& url)
 {
     dbg<<"removening page ["<<url<<"] from cache\n";
 

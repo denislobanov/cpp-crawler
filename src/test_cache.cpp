@@ -14,7 +14,7 @@ int main(void)
     std::ostringstream oss;
     int i;
 
-    struct page_data_s *test_page;
+    page_data_c *test_page;
 
     //test ctl
     const int max_pages = 2*PAGE_CACHE_MAX;
@@ -27,7 +27,7 @@ int main(void)
         std::string test_url = oss.str();
 
         //create a blank page & fill it with test data
-        test_page = new struct page_data_s;
+        test_page = new page_data_c;
         test_page->rank = i;
         oss.str("");
         oss<<"test_cache.cpp generated page "<<i;
@@ -48,7 +48,7 @@ int main(void)
         std::string test_url = oss.str();
 
         //retrieve test page
-        struct page_data_s *get_test_page;
+        page_data_c *get_test_page;
         if(test_cache.get_page_data(&get_test_page, test_url)) {
             cout<<"page "<<i<<" rank "<<get_test_page->rank<<endl;
             cout<<"page "<<i<<" description ["<<get_test_page->description<<"]\n"<<endl;
