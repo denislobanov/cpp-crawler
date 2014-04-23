@@ -6,7 +6,7 @@ test_parser
 test_crawler
 test_robots_txt
 test_cache
-test_database
+test_file_db
 test_db/
 test_memory_mgr
 test_html_normalise

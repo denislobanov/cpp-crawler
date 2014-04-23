@@ -42,7 +42,7 @@ template<typename T> class database
         db_path = uri;
         db_table = table;
     }
-    ~database(void);
+    ~database(void) {}
 
     /**
      * Blocking synchronous call to retrieve object from database. Automatically
@@ -78,7 +78,7 @@ template<typename T> class database
 
         //write
         file_io_lock.lock();
-        std::ofstream file_data(db_path+db_table+filename);
+        std::ofstream file_data(db_path+"/"+db_table+"/"+filename);
 
         file_data<<oss.str();
         file_data<<std::endl;

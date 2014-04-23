@@ -5,23 +5,15 @@
 #include "robots_txt.hpp"
 #include "netio.hpp"
 
+#define USER_AGENT "test_robots_txt"
+
 int main(void)
 {
-    netio my_netio("lcpp robots_txt unit test");
-    robots_txt my_robots_txt("sdfsdfsdf", "www.geeksaresexy.net");
-    //~ robots_txt my_robots_txt(my_netio, "lcpp robots_txt unit test", "http://en.wikipedia.org");
-    my_robots_txt.fetch(my_netio);
+    netio test_netio(USER_AGENT);
+    robots_txt my_robots_txt(USER_AGENT, "www.geeksaresexy.net", test_netio);
 
     //test crawl-delay
-    unsigned int i = (unsigned int)my_robots_txt.crawl_delay;
-    std::cout<<"crawl delay: "<<i<<std::endl;
-
-    //test disallow/allow control (plu export of disallow_list)
-    std::cout<<"exclusions list:"<<std::endl;
-    std::vector<std::string> exclusions_list;
-    my_robots_txt.export_exclusions(exclusions_list);
-    for(std::vector<std::string>::iterator it = exclusions_list.begin(); it != exclusions_list.end(); ++it)
-        std::cout<<*it<<std::endl;
+    std::cout<<"crawl delay: "<<my_robots_txt.crawl_delay().count()<<std::endl;
 
     //test path exclusion
     std::string test_path = "www.geeksaresexy.net/feed/blahblahblah.html";

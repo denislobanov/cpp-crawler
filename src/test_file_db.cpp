@@ -71,29 +71,18 @@ int main(void)
 
     test_url = "www.geeksaresexy.net";
     netio my_netio(USER_AGENT);
-    robots_txt* test_robots = new robots_txt("sdfsdfsdf", test_url);
-
-    //fill robots with test data
-    cout<<"filling robots_txt with data\n";
-    test_robots->fetch(my_netio);
+    robots_txt* test_robots = new robots_txt(USER_AGENT, test_url, my_netio);
 
     cout<<"sending robots_txt to database.."<<endl;
-    test_robots->last_visit = 42; //make chrono
     robots_db.put_object(test_robots, test_url);
 
     delete test_robots;
-    test_robots = new robots_txt(USER_AGENT, test_url);
+    test_robots = new robots_txt(USER_AGENT, test_url, my_netio);
 
     cout<<"reading from database.."<<endl;
     robots_db.get_object(test_robots, test_url);
-
-    cout<<"last visit: "<<test_robots->last_visit<<endl;
-    cout<<"crawl delay: "<<test_robots->crawl_delay<<endl;
-    cout<<"exclusion list: "<<endl;
-    std::vector<std::string> exclusions_list;
-    test_robots->export_exclusions(exclusions_list);
-    for(auto& x: exclusions_list)
-        std::cout<<x<<std::endl;
+    cout<<"last visit: "<<std::chrono::system_clock::to_time_t(test_robots->last_visit())<<endl;
+    cout<<"crawl delay: "<<test_robots->crawl_delay().count()<<endl;
 
     //free resources
     cout<<"\n~~~\ndone!"<<endl;

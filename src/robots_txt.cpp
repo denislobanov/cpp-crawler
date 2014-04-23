@@ -10,6 +10,9 @@
 //Local defines
 //~ #define DEBUG 1
 
+//in the event that robots.txt does not provide a 'Crawl-delay:' command, use this
+#define DEFAULT_CRAWL_DELAY 60  //seconds
+
 #if (defined(DEBUG))&&(DEBUG > 2)
 #include <fstream>
 #endif
@@ -26,19 +29,17 @@
     #define dbg_1 0 && std::cout
 #endif
 
-robots_txt::robots_txt(std::string user_agent, std::string root_domain)
+robots_txt::robots_txt(std::string user_agent, std::string root_domain, netio& netio_obj)
 {
     agent_name = user_agent;
     domain = root_domain;
     process_param = false;  //set to true on matching user-agent by process instruction
-    last_visit = 0;
-    crawl_delay = DEFAULT_CRAWL_DELAY;
+
+    fetch(netio_obj);
 }
 
-robots_txt::~robots_txt(void)
-{
-    //?
-}
+//what if i delete this from here and header?
+robots_txt::~robots_txt(void) {}
 
 void robots_txt::fetch(netio& netio_obj)
 {
@@ -46,10 +47,10 @@ void robots_txt::fetch(netio& netio_obj)
     disallow_list.clear();
     allow_list.clear();
     can_crawl = true;
-    crawl_delay = DEFAULT_CRAWL_DELAY;
+    timeout = std::chrono::seconds(DEFAULT_CRAWL_DELAY);
 
+    //fetch data, high enough debug uses file instead
 #if (defined(DEBUG))&&(DEBUG > 2)
-    //for debug, use file instead
     std::fstream debug_file;
     debug_file.open("robots.txt");
     std::string temp_data((std::istreambuf_iterator<char>(debug_file)),
@@ -59,27 +60,69 @@ void robots_txt::fetch(netio& netio_obj)
     netio_obj.fetch(&temp_data, domain+"/robots.txt");
 #endif
 
-
     parse(temp_data);
 }
 
-bool robots_txt::exclude(std::string& path)
+void robots_txt::parse(std::string& data)
 {
-    if(!can_crawl) {
-        std::cout<<"!can_crawl\n";
-        return true;
-    }
+    size_t data_size = data.size();
 
-    size_t pos = domain.length();
+    //error cases fall back to defaults set up by robots_txt::fetch()
+    if(data_size == 0) {
+        dbg<<"site does not have a robots.txt or failed to retrieve one"<<std::endl;
+    } else if(data_size > MAX_DATA_SIZE) {
+        std::cerr<<"data_size > MAX_DATA_SIZE"<<std::endl;
 
-    for(std::vector<std::string>::iterator it = disallow_list.begin(); it != disallow_list.end(); ++it) {
-        if(path.compare(pos, it->size(), *it) == 0) {
-            std::cout<<"url = ["<<path<<"] matches exclusion "<<*it<<std::endl;
-            return true;
+    //data is good, parse
+    } else {
+        //update last visit timestamp
+        last_access = std::chrono::system_clock::now();
+
+        std::stringstream stream(data);
+        std::string line;
+        while(std::getline(stream, line)) {
+            if(!line_is_comment(line)) {
+                size_t pos = 0;
+                size_t eol = line.length();
+
+                //find offset to first bit of non whitespace char
+                //this should never reach eol due to line_is_comment call
+                while((data.compare(pos, 1, " ") == 0)&&(pos < eol))
+                    ++pos;
+
+                //edge case, should never happen as line is not a comment
+                if(pos > eol) {
+                    std::cerr<<"robots_txt::parse pos > eol (line.length())"<<std::endl;
+                    break;
+                }
+
+                //create an all lowercase line for param field matching
+                std::string lc_line = line;
+                std::transform(lc_line.begin(), lc_line.end(), lc_line.begin(), ::tolower);
+
+                dbg_1<<"line ["<<line<<"] lc_line ["<<lc_line<<"]"<<std::endl;
+
+                process_instruction(line, lc_line, pos, eol);
+            }
+        }
+
+        //remove disallow_list entries that match allow_list
+        if(allow_list.size() > 0) {
+            dbg_1<<"--------\tpruning disallow_list\t--------"<<std::endl;
+
+            disallow_list.erase(std::remove_if(disallow_list.begin(), disallow_list.end(),
+                    [&, this](std::string& s) -> bool {
+                        //iterate through allow_list vector, return true if s matches.
+                        for(std::vector<std::string>::iterator it = allow_list.begin(); it != allow_list.end(); ++it)
+                            if(s.compare(0, it->size(), *it) == 0)
+                                return true;
+
+                        return false;
+                    }),
+                disallow_list.end()
+            );
         }
     }
-
-    return false;
 }
 
 //checks if line is a comment
@@ -102,41 +145,6 @@ size_t robots_txt::line_is_comment(std::string& data)
     }
 
     return false;
-}
-
-//matches lower case param representation in lc_data, if found pos and eol
-//are modified to represent the data after the param without whitespace
-//  and returns true
-//else returns false, pos and eol unmodified
-bool robots_txt::get_param(std::string& lc_data, size_t& pos, size_t& eol, std::string param)
-{
-    size_t param_length = param.length();
-
-    dbg<<"robots_txt::get_param()"<<std::endl;
-
-    size_t ret = lc_data.compare(pos, param_length, param);
-    if(ret == 0) {
-        pos += param_length; //skip over param
-
-        //skip over whitespace until param value is found
-        while((lc_data.compare(pos, 1, " ") == 0)&&(pos < eol))
-            ++pos;
-
-        while((lc_data.compare(eol, 1, " ") == 0)&&(eol > pos))
-            --eol;
-        return true;
-    }
-
-    dbg<<"\t lc_data ["<<lc_data<<"]\n  does not compare to\n\tparam ["<<param<<"]"<<std::endl;
-
-    return false;
-}
-
-//removed all bad_char from string data
-void robots_txt::sanitize(std::string& data, std::string bad_char)
-{
-    for(unsigned int i = 0; i < bad_char.length(); ++i)
-        data.erase(std::remove(data.begin(), data.end(), bad_char[i]), data.end());
 }
 
 //should be called after a 'User-agent:' field has been matched and identified
@@ -192,7 +200,7 @@ void robots_txt::process_instruction(std::string& data, std::string& lc_data, si
 
             str >> int_value;
             if(str)
-                crawl_delay = int_value;
+                timeout = std::chrono::seconds(int_value);
         } else if(get_param(lc_data, pos, eol, "allow:")) {
             std::string value = data.substr(pos, eol-pos);
 
@@ -212,88 +220,68 @@ void robots_txt::process_instruction(std::string& data, std::string& lc_data, si
     }
 }
 
-void robots_txt::parse(std::string& data)
+//removed all bad_char from string data
+void robots_txt::sanitize(std::string& data, std::string bad_char)
 {
-    size_t data_size = data.size();
+    for(unsigned int i = 0; i < bad_char.length(); ++i)
+        data.erase(std::remove(data.begin(), data.end(), bad_char[i]), data.end());
+}
 
-    //site does not have a robots.txt or failed to retrieve one
-    if(data_size == 0) {
-        // reset defaults
-        can_crawl = true;
-        crawl_delay = DEFAULT_CRAWL_DELAY;
-    } else if(data_size > MAX_DATA_SIZE) {
-        std::cerr<<"data_size > MAX_DATA_SIZE"<<std::endl;
-    } else {
-        std::stringstream stream(data);
-        std::string line;
+//matches lower case param representation in lc_data, if found pos and eol
+//are modified to represent the data after the param without whitespace
+//  and returns true
+//else returns false, pos and eol unmodified
+bool robots_txt::get_param(std::string& lc_data, size_t& pos, size_t& eol, std::string param)
+{
+    size_t param_length = param.length();
 
-        while(std::getline(stream, line)) {
-            if(!line_is_comment(line)) {
-                size_t pos = 0;
-                size_t eol = line.length();
+    dbg<<"robots_txt::get_param()"<<std::endl;
 
-                //find offset to first bit of non whitespace char
-                //this should never reach eol due to line_is_comment call
-                while((data.compare(pos, 1, " ") == 0)&&(pos < eol))
-                    ++pos;
+    size_t ret = lc_data.compare(pos, param_length, param);
+    if(ret == 0) {
+        pos += param_length; //skip over param
 
-                //edge case, should never happen as line is not a comment
-                if(pos > eol) {
-                    std::cerr<<"robots_txt::parse pos > eol (line.length())"<<std::endl;
-                    break;
-                }
+        //skip over whitespace until param value is found
+        while((lc_data.compare(pos, 1, " ") == 0)&&(pos < eol))
+            ++pos;
 
-                //create an all lowercase line for param field matching
-                std::string lc_line = line;
-                std::transform(lc_line.begin(), lc_line.end(), lc_line.begin(), ::tolower);
+        while((lc_data.compare(eol, 1, " ") == 0)&&(eol > pos))
+            --eol;
 
-                dbg_1<<"line ["<<line<<"] lc_line ["<<lc_line<<"]"<<std::endl;
+        return true;
+    }
 
-                process_instruction(line, lc_line, pos, eol);
-            }
-        }
+    dbg<<"\t lc_data ["<<lc_data<<"]\n  does not compare to\n\tparam ["<<param<<"]"<<std::endl;
+    return false;
+}
 
-        //prune disallow_list
-        if(allow_list.size() > 0) {
-            dbg_1<<"--------\tpruning disallow_list\t--------"<<std::endl;
+bool robots_txt::exclude(std::string& path)
+{
+    if(!can_crawl) {
+        std::cout<<"!can_crawl\n";
+        return true;
+    }
 
-            disallow_list.erase(std::remove_if(disallow_list.begin(), disallow_list.end(),
-                    [&, this](std::string& s) -> bool {
-                        //iterate through allow_list vector, return true if s matches.
-                        for(std::vector<std::string>::iterator it = allow_list.begin(); it != allow_list.end(); ++it)
-                            if(s.compare(0, it->size(), *it) == 0)
-                                return true;
+    size_t pos = domain.length();
 
-                        return false;
-                    }),
-                disallow_list.end()
-            );
+    for(std::vector<std::string>::iterator it = disallow_list.begin(); it != disallow_list.end(); ++it) {
+        if(path.compare(pos, it->size(), *it) == 0) {
+            std::cout<<"url = ["<<path<<"] matches exclusion "<<*it<<std::endl;
+            return true;
         }
     }
+
+    return false;
 }
 
-void robots_txt::import_exclusions(std::vector<std::string>& data)
+std::chrono::seconds robots_txt::crawl_delay(void)
 {
-    disallow_list = data;
+    return timeout;
 }
 
-bool robots_txt::export_exclusions(std::vector<std::string>& data)
+std::chrono::system_clock::time_point robots_txt::last_visit(void)
 {
-    data = disallow_list;
-
-    return disallow_list.size() > 0;
-}
-
-void robots_txt::import_inclusions(std::vector<std::string>& data)
-{
-    allow_list = data;
-}
-
-bool robots_txt::export_inclusions(std::vector<std::string>& data)
-{
-    data = allow_list;
-
-    return allow_list.size() > 0;
+    return last_access;
 }
 
 bool robots_txt::sitemap(std::string& data)
