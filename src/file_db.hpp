@@ -52,8 +52,28 @@ template<typename T> class database
      * for @key, @t is unmodified. Will throw exception if @key is pending delete.
      * Calling process should discard trying to process this data.
      */
-    void get_object(T* t, std::string& key) throw(std::exception)
-    {        
+    void get_object(T& t, std::string& key) throw(std::exception)
+    {
+        //generate db query
+        std::hash<std::string> h;
+        std::stringstream ss;
+        ss<<h(key);
+
+        std::string filename = ss.str();
+
+        //read from database
+        file_io_lock.lock();
+        std::ifstream file_data(db_path+"/"+db_table+"/"+filename);
+        if(file_data) {
+            //deserealize
+            boost::archive::binary_iarchive arch(file_data);
+            arch>> t;
+
+            file_data.close();
+        }
+        //if file does not exist we simply leave @t as is
+
+        file_io_lock.unlock();
     }
 
     /**
@@ -62,7 +82,7 @@ template<typename T> class database
      * writes to an unlocked object are expected to be handled by the database
      * implementation.
      */
-    void put_object(T* t, std::string& key)
+    void put_object(T& t, std::string& key)
     {
         //serealize object
         std::ostringstream oss;
@@ -96,6 +116,20 @@ template<typename T> class database
      */
     void delete_object(std::string& key) throw(std::exception)
     {
+        //generate db query
+        std::hash<std::string> h;
+        std::stringstream ss;
+        ss<<h(key);
+
+        std::string filename = db_path+"/"+db_table+"/"+ss.str();
+
+        //delete object
+        file_io_lock.lock();
+        int r = remove(filename.c_str());
+        file_io_lock.unlock();
+
+        if(!r)
+            throw db_exception("failed to delete file: "+filename);
     }
 
     /**
@@ -105,7 +139,7 @@ template<typename T> class database
      * As this function requires a read lock, it will throw an exception
      * if database object state is 'OBJ_PENDING_DELETE'.
      */
-    bool is_recent(T* t, std::string& key) throw(std::exception)
+    bool is_recent(T& t, std::string& key) throw(std::exception)
     {
         return true;
     }

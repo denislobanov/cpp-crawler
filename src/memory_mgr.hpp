@@ -4,7 +4,6 @@
 #include "page_data.hpp"
 
 class cache;
-class database;
 class robots_txt;
 
 /**

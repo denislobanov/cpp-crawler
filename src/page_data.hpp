@@ -33,12 +33,12 @@ class page_data_c
     {
         ar & rank;
         ar & crawl_count;
-        ar & boost::serialization::make_binary_object(&last_crawl, sizeof(last_crawl));
+        //~ ar & boost::serialization::make_binary_object(&last_crawl, sizeof(last_crawl));
         ar & out_links;
-        ar & url.raw();
-        ar & title.raw();
-        ar & description.raw();
-        ar & boost::serialization::make_binary_object(meta.data(), meta.size());
+        //~ ar & url.raw();
+        //~ ar & title.raw();
+        //~ ar & description.raw();
+        //~ ar & boost::serialization::make_binary_object(meta.data(), meta.size());
     }
 
     private:

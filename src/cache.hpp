@@ -10,8 +10,6 @@
 #include "page_data.hpp"
 #include "robots_txt.hpp"
 
-class database;
-
 //total number of robots_txt/page_data_c entries stored in cache
 #define PAGE_CACHE_MAX   10
 #define ROBOTS_CACHE_MAX 10
