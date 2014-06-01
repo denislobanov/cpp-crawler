@@ -40,18 +40,7 @@ cache::~cache(void)
         delete x.second.robots;
 }
 
-void cache::update_timestamp(data_map_t& dm, access_map_t& am, std::string url, std::chrono::steady_clock::time_point new_time)
-{
-    //delete old timestamp from access map
-    std::chrono::steady_clock::time_point old_time = dm.at(url).timestamp;
-    am.erase(am.find(old_time));
 
-    //update data timestamp
-    dm.at(url).timestamp = new_time;
-
-    //update access time
-    am.insert(std::pair<std::chrono::steady_clock::time_point, std::string>(new_time, url));
-}
 
 bool cache::get_page_data(page_data_c** page_data, std::string& url)
 {
@@ -73,6 +62,13 @@ bool cache::get_page_data(page_data_c** page_data, std::string& url)
     page_ctl.rw_mutex.unlock();
     return in_cache;
 }
+
+
+
+
+
+
+
 
 bool cache::put_page_data(page_data_c* page_data, std::string& url)
 {

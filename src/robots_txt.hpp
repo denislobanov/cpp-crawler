@@ -31,7 +31,14 @@ class robots_txt
      * root_domain will have robots.txt appended automatically
      */
     robots_txt(std::string user_agent, std::string root_domain, netio& netio_obj);
+    robots_txt(void);
     ~robots_txt(void);
+
+    /**
+     * set basic configuration parameters if void constructor was used,
+     * in such case this method must be called.
+     */
+    void configure(std::string user_agent, std::string root_domain, netio& netio_obj);
 
     /**
      * optional call to refresh current robots.txt profile
@@ -58,6 +65,16 @@ class robots_txt
      * returns true if sitemap present, data set to sitemap url
      */
     bool sitemap(std::string& data);
+
+    /**
+     * will always return false, as robots_txt  can be accessed concurrently
+     */
+    bool is_locked(void);
+
+    /**
+     * stub. will not lock object, see robots_txt::locked()
+     */
+    void lock(bool state);
 
     private:
     bool can_crawl; //if crawler's completely banned or a whitelist policy is used

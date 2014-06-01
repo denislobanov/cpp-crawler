@@ -29,11 +29,6 @@
 
 #define unescape_string(s) ::g_uri_unescape_string(s.c_str(), 0)
 
-static enum object_state {
-    OBJ_UNLOCKED,
-    OBJ_LOCKED,
-    OBJ_DELETE_PENDING
-};
 
 database::database(std::string uri) throw(std::exception)
 {

@@ -28,6 +28,10 @@ class page_data_c
     Glib::ustring description;        //short blob about page
     std::vector<Glib::ustring> meta;  //keywords associated with page
 
+    void is_locked(void)
+    {
+        return 
+
     template<class Archive>
     void serialize(Archive& ar, const unsigned int version)
     {
