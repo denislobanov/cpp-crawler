@@ -11,10 +11,17 @@ using std::endl;
 
 int main(void)
 {
-    memory_mgr test_mgr("./test_db", "test_agent");
+    //memory_mgr configuration
+    mmgr_config config = {
+        .database_path = "./test_db/",
+        .object_table = "page_table",
+        .user_agent = "test_mem_mgr"
+    };
+
+    memory_mgr<page_data_c> test_mgr(config);
     page_data_c* test_page;
     
-    int max_runs = 40;
+    int max_runs = CACHE_MAX;
 
     //fill cache&db
     cout<<"creating "<<max_runs<<" pages"<<endl;
@@ -25,7 +32,7 @@ int main(void)
         std::string test_url = ss.str();
 
         //allocate page
-        test_page = test_mgr.get_page(test_url);
+        test_page = test_mgr.get_object_nblk(test_url);
 
         //fill with data
         test_page->rank = i;
@@ -40,7 +47,7 @@ int main(void)
             test_page->meta = {"some", "shared", "meta", "however", "not", "just"};
 
         //send back to cache
-        test_mgr.put_page(test_page, test_url);
+        test_mgr.put_object_nblk(test_page, test_url);
     }
     
     cout<<"done, reading back pages.."<<endl;
@@ -51,7 +58,7 @@ int main(void)
         std::string test_url = ss.str();
 
         //retrieve page
-        test_page = test_mgr.get_page(test_url);
+        test_page = test_mgr.get_object_nblk(test_url);
 
         //display data
         cout<<"page rank: "<<test_page->rank<<endl;
@@ -65,7 +72,7 @@ int main(void)
         //to preserve the ending memory structure after the generating stage.
         //
         //real applications should put pages back..
-        test_mgr.put_page(test_page, test_url);
+        test_mgr.put_object_nblk(test_page, test_url);
         cout<<"~~~"<<endl;
     }
 

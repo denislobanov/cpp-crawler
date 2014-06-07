@@ -42,7 +42,7 @@ template<typename T> class database
      * for @key, @t is unmodified. Will throw exception if @key is pending delete.
      * Calling process should discard trying to process this data.
      */
-    void get_object(T& t, std::string& key) throw(std::exception);
+    void get_object(T*& t, std::string& key) throw(std::exception);
 
     /**
      * Blocking call to put object to database. If object was previously
@@ -50,7 +50,7 @@ template<typename T> class database
      * writes to an unlocked object are expected to be handled by the database
      * implementation.
      */
-    void put_object(T& t, std::string& key);
+    void put_object(T*& t, std::string& key);
 
     /**
      * Sets object state to 'OBJ_DELETE_PENDING' to prevent get_object deadlocks
@@ -67,7 +67,7 @@ template<typename T> class database
      * As this function requires a read lock, it will throw an exception
      * if database object state is 'OBJ_PENDING_DELETE'.
      */
-    bool is_recent(T& t, std::string& key) throw(std::exception);
+    bool is_recent(T*& t, std::string& key) throw(std::exception);
 
     private:
     std::mutex file_io_lock;    //concurrent open to the same file
@@ -75,7 +75,7 @@ template<typename T> class database
     std::string db_table;
 };
 
-template<typename T> void database<T>::get_object(T& t, std::string& key) throw(std::exception)
+template<typename T> void database<T>::get_object(T*& t, std::string& key) throw(std::exception)
 {
     //generate db query
     std::hash<std::string> h;
@@ -99,7 +99,7 @@ template<typename T> void database<T>::get_object(T& t, std::string& key) throw(
     file_io_lock.unlock();
 }
 
-template<typename T> void database<T>::put_object(T& t, std::string& key)
+template<typename T> void database<T>::put_object(T*& t, std::string& key)
 {
     //serealize object
     std::ostringstream oss;
@@ -141,7 +141,7 @@ template<typename T> void database<T>::delete_object(std::string& key) throw(std
         throw db_exception("failed to delete file: "+filename);
 }
 
-template<typename T> bool database<T>::is_recent(T& t, std::string& key) throw(std::exception)
+template<typename T> bool database<T>::is_recent(T*& t, std::string& key) throw(std::exception)
 {
     return true;
 }

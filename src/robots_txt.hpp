@@ -19,7 +19,6 @@ class netio;
 
 class robots_txt
 {
-    friend class memory_mgr;
     friend class boost::serialization::access;
 
     public:
@@ -67,19 +66,22 @@ class robots_txt
     bool sitemap(std::string& data);
 
     /**
-     * will always return false, as robots_txt  can be accessed concurrently
+     * returns true whilst use_count > 0
      */
     bool is_locked(void);
 
     /**
-     * stub. will not lock object, see robots_txt::locked()
+     * increment or decrement use_count, which acts as a semaphore for
+     * access count. This is only needed so that robots_txt objects are
+     * not deleted whilst in use by another thread.
      */
-    void lock(bool state);
+    void lock(void);
+    void unlock(void);
 
     private:
     bool can_crawl; //if crawler's completely banned or a whitelist policy is used
     bool process_param;
-    //used as a semaphre for freeing memory via memory_mgr
+    //used as a semaphre for freeing memory via memory_mgr - not serealized
     std::atomic<unsigned int> use_count;
 
     std::string agent_name;

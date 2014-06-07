@@ -15,29 +15,12 @@
 #include "page_data.hpp"
 #include "ipc_common.hpp"
 #include "memory_mgr.hpp"
+#include "debug.hpp"
 
 //Local defines
-#define DEBUG 4
 #define CREDIT_TAX_PERCENT 10
 #define CREDIT_TAX_ALL 100
 
-#if defined(DEBUG)
-    #define dbg std::cout<<__FILE__<<"("<<__LINE__<<"): "
-    #if DEBUG > 1
-        #define dbg_1 std::cout<<__FILE__<<"("<<__LINE__<<"): "
-    #else
-        #define dbg_1 0 && std::cout
-    #endif
-    #if DEBUG > 2
-        #define dbg_2 std::cout<<__FILE__<<"("<<__LINE__<<"): "
-    #else
-        #define dbg_2 0 && std::cout
-    #endif
-#else
-    #define dbg 0 && std::cout
-    #define dbg_1 0 && std::cout
-    #define dbg_2 0 && std::cout
-#endif
 
 crawler_thread::crawler_thread(ipc_client* ipc_obj)
 {

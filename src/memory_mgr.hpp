@@ -1,9 +1,13 @@
+#if !defined(MEMORY_MGR_H)
+#define MEMORY_MGR_H
+
 #include <iostream>
 #include <stdexcept>
 
 #include "page_data.hpp"
+#include "cache.hpp"
+#include "file_db.hpp"
 
-class cache;
 class robots_txt;
 
 /**
@@ -39,7 +43,7 @@ struct mmgr_config
  *          -- fifo?
  *      get/put to from pool
  */
-template<typename T> class memory_mgr
+template<class T> class memory_mgr
 {
     public:
     memory_mgr(struct mmgr_config& config);
@@ -112,20 +116,20 @@ template<typename T> class memory_mgr
     database<T>* mem_db;
 };
 
-template<typename T> void memory_mgr<T>::memory_mgr(struct mmgr_config& config)
+template<class T> memory_mgr<T>::memory_mgr(struct mmgr_config& config)
 {
     cfg = config;
-    mem_cache = new cache<T>(void);
+    mem_cache = new cache<T>;
     mem_db = new database<T>(cfg.database_path, cfg.object_table);
 }
 
-template<typename T> void memory_mgr<T>::~memory_mgr(void)
+template<class T> memory_mgr<T>::~memory_mgr(void)
 {
     delete mem_cache;
     delete mem_db;
 }
 
-template<typename T> T* memory_mgr<T>::get_object_nblk(std::string& url) throw(std::exception)
+template<class T> T* memory_mgr<T>::get_object_nblk(std::string& url) throw(std::exception)
 {
     T* t;
 
@@ -144,21 +148,24 @@ template<typename T> T* memory_mgr<T>::get_object_nblk(std::string& url) throw(s
     // check if object is locked
     if(t->is_locked())
         throw memory_exception("LOCKED. Cannot access object "+url);
+    t->lock();
 
     return t;
 }
 
-template<typename T>void memory_mgr<T>::put_object_nblk(T* t, std::string& url) throw(std::exception)
+template<class T> void memory_mgr<T>::put_object_nblk(T* t, std::string& url) throw(std::exception)
 {
     if(!t->is_locked())
         throw memory_exception("UNLOCKED. memory_mgr::put_object_nblk given an unlocked object. Was it allocated by us?");
 
-    mem_db->put_object(*t, url);
-    if(!mem_cache->put_object(*t, url))
+    mem_db->put_object(t, url);
+    if(!mem_cache->put_object(t, url))
         delete t; //object did not make it to cache
+    else
+        t->unlock();
 }
 
-template<typename T>void memory_mgr<T>::delete_object(T* t, std::string& url) throw(std::exception)
+template<class T> void memory_mgr<T>::delete_object_nblk(T* t, std::string& url) throw(std::exception)
 {
     if(!t->is_locked)
         throw memory_exception("UNLOCKED. Cannot delete object "+url+" - Was it allocated by us?");
@@ -167,3 +174,4 @@ template<typename T>void memory_mgr<T>::delete_object(T* t, std::string& url) th
     mem_cache->delete_object(url);
     delete t;
 }
+#endif

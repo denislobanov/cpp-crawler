@@ -13,21 +13,7 @@
 #include "ipc_client.hpp"
 #include "ipc_common.hpp"
 #include "connection.hpp"
-
-//Local defines
-#define DEBUG 1
-
-#if defined(DEBUG)
-    #define dbg std::cout<<__FILE__<<"("<<__LINE__<<") "<<__func__<<": "
-    #if DEBUG > 1
-        #define dbg_1 std::cout<<__FILE__<<"("<<__LINE__<<") "<<__func__<<": "
-    #else
-        #define dbg_1 0 && std::cout
-    #endif
-#else
-    #define dbg 0 && std::cout
-    #define dbg_1 0 && std::cout
-#endif
+#include "debug.hpp"
 
 using boost::asio::ip::tcp;
 

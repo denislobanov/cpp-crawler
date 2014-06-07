@@ -5,29 +5,29 @@
 #include "page_data.hpp"
 #include "cache.hpp"
 
+#define MAX_PAGES (2*CACHE_MAX)
+
 using std::cout;
 using std::endl;
 
 int main(void)
 {
-    cache test_cache;
+    cache<page_data_c> test_cache;
     std::ostringstream oss;
     int i;
 
-    page_data_c *test_page;
+    std::cout<<"filling cache with "<<MAX_PAGES<<" entires"<<std::endl;
+    for(i = 0; i < MAX_PAGES; ++i) {
+        //page is allocated here, addr stored in memory (cache), then
+        //deleted by next clause
+        page_data_c* test_page = new page_data_c;
 
-    //test ctl
-    const int max_pages = 2*PAGE_CACHE_MAX;
-
-    std::cout<<"filling cache with "<<max_pages<<" entires"<<std::endl;
-    for(i = 0; i < max_pages; ++i) {
         //generate test url
         oss.str("");
         oss<<"http://test_url_"<<i<<".com/test_page"<<i<<".html";
         std::string test_url = oss.str();
 
         //create a blank page & fill it with test data
-        test_page = new page_data_c;
         test_page->rank = i;
         oss.str("");
         oss<<"test_cache.cpp generated page "<<i;
@@ -35,24 +35,26 @@ int main(void)
 
         //send to cache
         cout<<"adding page "<<i<<" to cache"<<endl;
-        test_cache.put_page_data(test_page, test_url);
-        test_page->access_lock.unlock();    //normally done by memory_mgr class
+        test_cache.put_object(test_page, test_url);
         cout<<endl;
     }
 
+    //now any pages that have not make it to cache or have been kicked out
+    //have been deleted by the cache class, so we only need to delete
+    //the remaining.
     cout<<"\n~~~\ngetting "<<i<<" pages"<<endl;
-    for(i = 0; i < max_pages; ++i) {
+    for(i = 0; i < MAX_PAGES; ++i) {
         //generate test url
         oss.str("");
         oss<<"http://test_url_"<<i<<".com/test_page"<<i<<".html";
         std::string test_url = oss.str();
 
         //retrieve test page
-        page_data_c *get_test_page;
-        if(test_cache.get_page_data(&get_test_page, test_url)) {
+        page_data_c* get_test_page;
+        if(test_cache.get_object(&get_test_page, test_url)) {
             cout<<"page "<<i<<" rank "<<get_test_page->rank<<endl;
             cout<<"page "<<i<<" description ["<<get_test_page->description<<"]\n"<<endl;
-
+            delete get_test_page;
         } else {
             cout<<"page "<<i<<" not in cache\n"<<endl;
         }

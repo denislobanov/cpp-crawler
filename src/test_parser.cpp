@@ -27,17 +27,17 @@ int main(void)
     std::vector<struct tagdb_s> parse_param;
     struct tagdb_s param;
 
-    param.tag_type = url;
+    param.tag_type = tag_type_url;
     param.xpath = "//a[@href]";
     param.attr = "href";
     parse_param.push_back(param);
 
-    param.tag_type = meta;
+    param.tag_type = tag_type_meta;
     param.xpath = "//p";
     param.attr = "";
     parse_param.push_back(param);
 
-    param.tag_type = title;
+    param.tag_type = tag_type_title;
     param.xpath = "//title";
     param.attr = "";
     parse_param.push_back(param);

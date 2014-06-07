@@ -10,9 +10,9 @@
 #include "ipc_common.hpp"
 #include "parser.hpp"
 #include "ipc_client.hpp"
+#include "memory_mgr.hpp"
 
 class netio;
-class memory_mgr;
 class ipc_client;
 class robots_txt;
 
@@ -58,10 +58,11 @@ class crawler_thread
     struct worker_config cfg;
     std::string data;
     std::thread main_thread;
+    memory_mgr<page_data_c> page_mgr;
+    memory_mgr<robots_txt> robots_mgr;
 
     //objects dynamically allocated based on config
     netio* netio_obj;
-    memory_mgr* mem_mgr;
     ipc_client* ipc;
 
     size_t root_domain(std::string& url);

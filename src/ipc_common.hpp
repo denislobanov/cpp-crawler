@@ -5,8 +5,6 @@
 #include <type_traits>
 #include <boost/serialization/vector.hpp>
 
-#include "page_data.hpp"
-
 #define MASTER_SERVICE_NAME "23331"
 #define MASTER_SERVICE_PORT 23331
 
@@ -35,13 +33,13 @@ enum cnc_instruction {
  * worker config/registration data
  */
 enum tag_type_e {            //part of parser configuration
-    invalid,
-    url,
-    title,
-    description,
-    meta,
-    email,
-    image
+    tag_type_invalid,
+    tag_type_url,
+    tag_type_title,
+    tag_type_description,
+    tag_type_meta,
+    tag_type_email,
+    tag_type_image
 };
 
 struct tagdb_s {            //part of parser configuration
@@ -115,5 +113,20 @@ enum data_type_e {
     instruction,
     cnc_data,
     queue_node
+};
+
+/**
+ * describes an entry in the crawl (IPC) queue
+ */
+struct queue_node_s {
+    unsigned int credit;    //cash given to link from referring page
+    std::string url;
+
+    template<class Archive>
+    void serialize(Archive& ar, const unsigned int version)
+    {
+        ar & credit;
+        ar & url;
+    }
 };
 #endif

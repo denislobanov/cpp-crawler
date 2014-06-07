@@ -7,7 +7,7 @@ INCLUDES=$(shell pkg-config --cflags $(DEPENDENCIES))
 LDDFLAGS=$(shell curl-config --libs) $(shell pkg-config --libs $(DEPENDENCIES))
 LIBRARIES=-lboost_system -lpthread -lboost_serialization
 
-COMMON_OBJECTS=netio.o parser.o robots_txt.o cache.o memory_mgr.o
+COMMON_OBJECTS=netio.o parser.o robots_txt.o
 WORKER_OBJECTS=ipc_client.o crawler_thread.o
 MASTER_OBJECTS=crawler_master.o
 UNIT_TESTS=test_netio test_parser test_crawler_thread test_robots_txt test_cache test_file_db test_memory_mgr test_ipc_client

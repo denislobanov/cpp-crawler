@@ -9,6 +9,7 @@
 
 #include "page_data.hpp"
 #include "robots_txt.hpp"
+#include "debug.hpp"
 
 //total number of objects stored in cache
 #define CACHE_MAX   10
@@ -16,7 +17,20 @@
 #define CACHE_RES   0
 //total cache size is thus CACHE_MAX - CACHE_RES
 
-template<typename T> class cache
+#if !defined(dbg)
+    #if defined(DEBUG)
+        #define dbg std::cout<<__FILE__<<"("<<__LINE__<<"): "
+    #else
+        #define dbg 0 && std::cout
+    #endif
+    #if !defined(dbg_1) && DEBUG > 1
+        #define dbg_1 std::cout<<__FILE__<<"("<<__LINE__<<"): "
+    #else
+        #define dbg_1 0 && std::cout
+    #endif
+#endif
+
+template<class T> class cache
 {
     public:
     cache(void);
@@ -48,31 +62,32 @@ template<typename T> class cache
     void delete_object(std::string& key);
 
     private:
-    typedef std::unordered_map<std::string, struct cache_entry_s> data_map_t;
-    typedef std::map<time_point_t, std::string> access_map_t;
     typedef std::chrono::steady_clock::time_point time_point_t;
+    typedef std::map<time_point_t, std::string> access_map_t;
 
     struct cache_entry_s {
         T* t;
         time_point_t timestamp;
+        // semaphore access counter
     };
+    typedef std::unordered_map<std::string, struct cache_entry_s> data_map_t;
 
     data_map_t obj_map;
     access_map_t obj_access;
     std::mutex rw_mutex;
-    unsigned int fill;
+    int fill;
 
     //non-threaded
     void prune_cache(void);
     void update_timestamp(std::string& key, time_point_t new_time);
 };
 
-template<typename T>void cache::cache(void)
+template<class T> cache<T>::cache(void)
 {
     fill = 0;
 }
 
-template<typename T>void cache::update_timestamp(std::string& key, time_point_t new_time)
+template<class T> void cache<T>::update_timestamp(std::string& key, time_point_t new_time)
 {
     //delete old timestamp from access map
     time_point_t old_time = obj_map.at(key).timestamp;
@@ -82,10 +97,10 @@ template<typename T>void cache::update_timestamp(std::string& key, time_point_t 
     obj_map.at(key).timestamp = new_time;
 
     //update access time
-    obj_access.insert(std::pair<time_point_t, std::string>(new_time, url));
+    obj_access.insert(std::pair<time_point_t, std::string>(new_time, key));
 }
 
-template<typename T>bool cache::get_object(T** t, std::string& key)
+template<class T> bool cache<T>::get_object(T** t, std::string& key)
 {
     bool in_cache = false;
 
@@ -93,7 +108,7 @@ template<typename T>bool cache::get_object(T** t, std::string& key)
     try {
         //will throw exception if page is not in cache
         *t = obj_map.at(key).t;
-        update_timestamp(key, std::chrono::steady_clock::now())
+        update_timestamp(key, std::chrono::steady_clock::now());
         in_cache = true;
 
         dbg<<"object ["<<key<<"] in cache\n";
@@ -105,7 +120,7 @@ template<typename T>bool cache::get_object(T** t, std::string& key)
     return in_cache;
 }
 
-template<typename T>bool cache::put_object(T* t, std::string& key)
+template<class T> bool cache<T>::put_object(T* t, std::string& key)
 {
     time_point_t new_time = std::chrono::steady_clock::now();
 
@@ -116,7 +131,7 @@ template<typename T>bool cache::put_object(T* t, std::string& key)
         update_timestamp(key, new_time);
         dbg<<"object ["<<key<<"] already in cache, updating\n";
     } catch(const std::out_of_range& e) {
-        access_map_t::iterator pos = page_access.end();
+        access_map_t::iterator pos = obj_access.end();
         struct cache_entry_s entry;
         entry.t = t;
         entry.timestamp = new_time;
@@ -135,12 +150,12 @@ template<typename T>bool cache::put_object(T* t, std::string& key)
             //could be deleted.
             prune_cache();
         } else {
-            std::string oldest_key = obj_access.begin()->seconds;
+            std::string oldest_key = obj_access.begin()->second;
 
             //we do not know the object type, and whilst page objects have
             //a rank field, robots do not.
-            dbg<<"replacing ["<<oldest_url<<"] in cache for ["<<url<<"]\n";
-            obj_access.erase(obj_map.at(oldest_key).timestamp;
+            dbg<<"replacing ["<<oldest_key<<"] in cache for ["<<key<<"]\n";
+            obj_access.erase(obj_map.at(oldest_key).timestamp);
             obj_map.erase(obj_map.find(oldest_key));
 
             obj_map.insert(std::pair<std::string, struct cache_entry_s>(key, entry));
@@ -157,19 +172,19 @@ template<typename T>bool cache::put_object(T* t, std::string& key)
  * Helper function to remove excess (>CACHE_MAX) entries from cache and
  * cache maps
  */
-template<typename >void cache::prune_cache(void)
+template<class T> void cache<T>::prune_cache(void)
 {
     while(fill-(CACHE_MAX-CACHE_RES) > 0) {
-        dbg_1<<"objects to prune "<<fill-(CACHE_MAX-CACHE_RES<<std::endl;
+        dbg_1<<"objects to prune "<<(fill-(CACHE_MAX-CACHE_RES))<<std::endl;
 
-        delete obj_map->at(obj_access->begin()->seconds).t;
-        obj_map->erase(obj_map->find(obj_access->begin()->second));
-        obj_access->erase(obj_access->begin());
+        delete obj_map.at(obj_access.begin()->second).t;
+        obj_map.erase(obj_map.find(obj_access.begin()->second));
+        obj_access.erase(obj_access.begin());
         --fill;
     }
 }
 
-template<typename >void cache::delete_object(std::string& key)
+template<class T> void cache<T>::delete_object(std::string& key)
 {
     dbg<<"deleting object at ["<<key<<"]\n";
 
@@ -179,8 +194,8 @@ template<typename >void cache::delete_object(std::string& key)
         time_point_t ame = obj_map->at(key).timestamp;
 
         dbg<<"removing page ["<<key<<"]\n";
-        obj_access->erase(obj_access->find(ame));
-        obj_map->erase(key);
+        obj_access.erase(obj_access.find(ame));
+        obj_map.erase(key);
     } catch(const std::exception& e) {
         dbg<<"cannot delete page - not in cache\n";
     }

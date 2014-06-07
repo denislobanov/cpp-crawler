@@ -294,12 +294,17 @@ bool robots_txt::sitemap(std::string& data)
     return false;
 }
 
-bool robots_txt::is_locked(void)
+void robots_txt::lock(void)
 {
-    return false;
+    ++use_count;
 }
 
-bool robots_txt::lock(bool state);
+void robots_txt::unlock(void)
 {
-    return;
+    --use_count;
+}
+
+bool robots_txt::is_locked(void)
+{
+    return use_count > 0;
 }
