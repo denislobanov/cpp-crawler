@@ -35,7 +35,9 @@ static struct worker_config worker_cfg = {
     .robots_cache_max = 3,
     .robots_cache_res = 1,
 
-    .db_path = "test_db"
+    .db_path = "test_db",
+    .page_table = "page_table",
+    .robots_table = "robots_table"
 };
 
 int main(void)

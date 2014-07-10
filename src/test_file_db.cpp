@@ -32,7 +32,7 @@ int main(void)
 
     //send to db
     cout<<"sending page to database.."<<endl;
-    page_db.put_object(*test_page, test_url);
+    page_db.put_object(test_page, test_url);
 
     //flush page
     delete test_page;
@@ -41,7 +41,7 @@ int main(void)
     //retrieve
     cout<<"reading from database.."<<endl;
     try {
-        page_db.get_object(*test_page, test_url);
+        page_db.get_object(test_page, test_url);
     } catch(db_exception &e) {
         cout<<"db_exception - "<<e.what();
         delete test_page;
@@ -74,13 +74,13 @@ int main(void)
     robots_txt* test_robots = new robots_txt(USER_AGENT, test_url, my_netio);
 
     cout<<"sending robots_txt to database.."<<endl;
-    robots_db.put_object(*test_robots, test_url);
+    robots_db.put_object(test_robots, test_url);
 
     delete test_robots;
     test_robots = new robots_txt(USER_AGENT, test_url, my_netio);
 
     cout<<"reading from database.."<<endl;
-    robots_db.get_object(*test_robots, test_url);
+    robots_db.get_object(test_robots, test_url);
     cout<<"last visit: "<<std::chrono::system_clock::to_time_t(test_robots->last_visit())<<endl;
     cout<<"crawl delay: "<<test_robots->crawl_delay().count()<<endl;
 

@@ -33,6 +33,7 @@ robots_txt::robots_txt(std::string user_agent, std::string root_domain, netio& n
 {
     configure(user_agent, root_domain);
     process_param = false;  //set to true on matching user-agent by process instruction
+    use_count = 0;
 
     fetch(netio_obj);
 }
@@ -40,6 +41,7 @@ robots_txt::robots_txt(std::string user_agent, std::string root_domain, netio& n
 robots_txt::robots_txt(void)
 {
     process_param = false;  //set to true on matching user-agent by process instruction
+    use_count = 0;
 }
 
 void robots_txt::configure(std::string user_agent, std::string root_domain)
