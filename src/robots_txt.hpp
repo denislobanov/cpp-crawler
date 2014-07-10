@@ -20,7 +20,6 @@ class netio;
 class robots_txt
 {
     friend class boost::serialization::access;
-
     public:
     /**
      * creates a robots_txt parser instance.
@@ -31,13 +30,12 @@ class robots_txt
      */
     robots_txt(std::string user_agent, std::string root_domain, netio& netio_obj);
     robots_txt(void);
-    ~robots_txt(void);
 
     /**
      * set basic configuration parameters if void constructor was used,
      * in such case this method must be called.
      */
-    void configure(std::string user_agent, std::string root_domain, netio& netio_obj);
+    void configure(std::string user_agent, std::string root_domain);
 
     /**
      * optional call to refresh current robots.txt profile

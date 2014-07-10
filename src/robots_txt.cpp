@@ -31,15 +31,22 @@
 
 robots_txt::robots_txt(std::string user_agent, std::string root_domain, netio& netio_obj)
 {
-    agent_name = user_agent;
-    domain = root_domain;
+    configure(user_agent, root_domain);
     process_param = false;  //set to true on matching user-agent by process instruction
 
     fetch(netio_obj);
 }
 
-//what if i delete this from here and header?
-robots_txt::~robots_txt(void) {}
+robots_txt::robots_txt(void)
+{
+    process_param = false;  //set to true on matching user-agent by process instruction
+}
+
+void robots_txt::configure(std::string user_agent, std::string root_domain)
+{
+    agent_name = user_agent;
+    domain = root_domain;
+}
 
 void robots_txt::fetch(netio& netio_obj)
 {

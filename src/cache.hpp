@@ -191,7 +191,7 @@ template<class T> void cache<T>::delete_object(std::string& key)
     rw_mutex.lock();
     try {
         //reverse lookup access map entries (ame)
-        time_point_t ame = obj_map->at(key).timestamp;
+        time_point_t ame = obj_map.at(key).timestamp;
 
         dbg<<"removing page ["<<key<<"]\n";
         obj_access.erase(obj_access.find(ame));

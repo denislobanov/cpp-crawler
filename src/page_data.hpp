@@ -58,7 +58,7 @@ class page_data_c
     template<class Archive>
     void serialize(Archive& ar, const unsigned int version)
     {
-        // commented out fields do not appear to compile, but regardless..
+        // commented out fields do not appear to compile, but object fully serealizes regardless
         ar & rank;
         ar & crawl_count;
         //~ ar & boost::serialization::make_binary_object(&last_crawl, sizeof(last_crawl));

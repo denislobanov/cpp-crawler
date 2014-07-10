@@ -3,7 +3,7 @@
 get_page
 test_netio
 test_parser
-test_crawler
+test_crawler_thread
 test_robots_txt
 test_cache
 test_file_db

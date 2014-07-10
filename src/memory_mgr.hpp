@@ -5,6 +5,7 @@
 #include <stdexcept>
 
 #include "page_data.hpp"
+#include "robots_txt.hpp"
 #include "cache.hpp"
 #include "file_db.hpp"
 
@@ -167,7 +168,7 @@ template<class T> void memory_mgr<T>::put_object_nblk(T* t, std::string& url) th
 
 template<class T> void memory_mgr<T>::delete_object_nblk(T* t, std::string& url) throw(std::exception)
 {
-    if(!t->is_locked)
+    if(!t->is_locked())
         throw memory_exception("UNLOCKED. Cannot delete object "+url+" - Was it allocated by us?");
 
     mem_db->delete_object(url);

@@ -43,17 +43,17 @@ int main(void)
     //create parser config
     struct tagdb_s param;
 
-    param.tag_type = url;
+    param.tag_type = tag_type_url;
     param.xpath = "//a[@href]";
     param.attr = "href";
     worker_cfg.parse_param.push_back(param);
 
-    param.tag_type = meta;
+    param.tag_type = tag_type_meta;
     param.xpath = "//p";
     param.attr = "";
     worker_cfg.parse_param.push_back(param);
 
-    param.tag_type = title;
+    param.tag_type = tag_type_title;
     param.xpath = "//title";
     param.attr = "";
     worker_cfg.parse_param.push_back(param);

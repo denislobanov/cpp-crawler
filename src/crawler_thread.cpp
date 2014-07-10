@@ -185,14 +185,20 @@ void crawler_thread::thread() throw(std::underflow_error)
             page_data_c* page = page_mgr.get_object_nblk(work_item.url);
             std::string root_url(work_item.url, 0, root_domain(work_item.url));
             dbg<<"root_url ["<<root_url<<"]\n";
+
             robots_txt* robots = robots_mgr.get_object_nblk(root_url);
+            robots->configure(cfg.user_agent, root_url);
 
 
             //robots.txt checks
-            if(std::difftime(std::time(0), robots->last_visit()) >= ROBOTS_REFRESH) {
+            std::chrono::seconds robots_refresh_time(ROBOTS_REFRESH);
+            std::chrono::system_clock::time_point now_time = std::chrono::system_clock::now();
+
+            if(std::chrono::duration_cast<std::chrono::seconds>
+                (now_time - robots->last_visit()) >= robots_refresh_time) {
                 dbg<<"refreshing robots_txt\n";
                 robots->fetch(*netio_obj);
-                robots->last_visit = std::time(0);
+                //robots last_visit time is updated automatically
             }
 
             //can we crawl this page?
@@ -200,13 +206,15 @@ void crawler_thread::thread() throw(std::underflow_error)
             if(!robots->exclude(work_item.url)) {
                 //measures to prevent excessive crawling
                 std::chrono::hours one_day(24);
+
                 if(std::chrono::duration_cast<std::chrono::hours>
-                    (std::chrono::system_clock::now() - page->last_crawl) >= one_day) {
+                    (now_time - page->last_crawl) >= one_day) {
 
                     dbg<<"page->last_visit > 24 hours, resetting count & crawling\n";
                     page->crawl_count = 0;
                     crawl(work_item, page, robots);
-                } else if(std::difftime(std::time(0), robots->last_visit()) >= robots->crawl_delay) {
+                } else if(std::chrono::duration_cast<std::chrono::hours>
+                    (now_time - robots->last_visit()) >= robots->crawl_delay()) {
 
                     if(page->crawl_count >= cfg.day_max_crawls) {
                         dbg<<"page->crawl_count >= cfg.day_max_crawls\n";
