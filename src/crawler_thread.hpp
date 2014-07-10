@@ -54,12 +54,10 @@ class crawler_thread
     worker_status status(void);
 
     private:
-    worker_status _status;
+    worker_status thread_status;
     struct worker_config cfg;
     std::string data;
     std::thread main_thread;
-    memory_mgr<page_data_c> page_mgr;
-    memory_mgr<robots_txt> robots_mgr;
 
     //objects dynamically allocated based on config
     netio* netio_obj;

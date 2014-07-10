@@ -72,7 +72,9 @@ struct worker_config {
     unsigned int robots_cache_res;
 
     //database
-    std::string db_path;            //uri
+    std::string db_path;
+    std::string page_table;
+    std::string robots_table;
 
     //parser
     std::vector<struct tagdb_s> parse_param;
@@ -87,6 +89,8 @@ struct worker_config {
         ar & robots_cache_max;
         ar & robots_cache_res;
         ar & db_path;
+        ar & page_table;
+        ar & robots_table;
         ar & parse_param;
     }
 };

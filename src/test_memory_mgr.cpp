@@ -2,6 +2,7 @@
 #include <vector>
 #include <sstream>
 #include <ctime>
+#include <chrono>
 
 #include "page_data.hpp"
 #include "memory_mgr.hpp"
@@ -39,6 +40,10 @@ int main(void)
         ss.str("");
         ss<<"test_cache.cpp generated page "<<i;
         test_page->description = ss.str();
+        ss.str("");
+        ss<<"title "<<i<<"!";
+        test_page->title = ss.str();
+        test_page->last_crawl = std::chrono::system_clock::now();
 
         //meta data
         if(i%2)
@@ -62,6 +67,10 @@ int main(void)
 
         //display data
         cout<<"page rank: "<<test_page->rank<<endl;
+
+        std::time_t last_c = std::chrono::system_clock::to_time_t(test_page->last_crawl);
+        cout<<"last crawl: "<<std::ctime(&last_c)<<endl;
+        cout<<"pag titile: "<<test_page->title<<endl;
         cout<<"meta: "<<endl;
         for(auto& x: test_page->meta)
             cout<<"\t"<<x<<endl;

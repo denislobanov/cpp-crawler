@@ -25,14 +25,13 @@
 crawler_thread::crawler_thread(ipc_client* ipc_obj)
 {
     //set to idle on entry to main loop
-    _status = SLEEP;
+    thread_status = SLEEP;
     ipc = ipc_obj;
 }
 
 crawler_thread::~crawler_thread(void)
 {
     delete netio_obj;
-    delete mem_mgr;
 }
 
 //try and get config via ipc_client
@@ -40,7 +39,6 @@ void crawler_thread::start(void)
 {
     cfg = ipc->get_config();
     netio_obj = new netio(cfg.user_agent);
-    mem_mgr = new memory_mgr(cfg.db_path, cfg.user_agent);
 
     launch_thread();
 }
@@ -50,7 +48,6 @@ void crawler_thread::start(worker_config& config)
 {
     cfg = config;
     netio_obj = new netio(cfg.user_agent);
-    mem_mgr = new memory_mgr(cfg.db_path, cfg.user_agent);
 
     launch_thread();
 }
@@ -58,12 +55,12 @@ void crawler_thread::start(worker_config& config)
 //pointless?
 void crawler_thread::stop(void)
 {
-    _status = STOP;
+    thread_status = STOP;
 }
 
 worker_status crawler_thread::status(void)
 {
-    return _status;
+    return thread_status;
 }
 
 void crawler_thread::launch_thread(void)
@@ -91,14 +88,14 @@ void crawler_thread::crawl(queue_node_s& work_item, page_data_c* page, robots_tx
                 dbg_2<<"tag name ["<<d.tag_name<<"] tag data ["<<d.tag_data<<"] attr_data ["<<d.attr_data<<"]\n";
 
                 switch(d.tag_type) {
-                case url:
+                case tag_type_url:
                     if(sanitize_url_tag(d, work_item.url)) {
                         ++linked_pages;
                         dbg_2<<"found link ["<<d.attr_data<<"]\n";
                     }
                     break;
 
-                case meta:
+                case tag_type_meta:
                 {
                     unsigned int i;
                     if((i = tokenize_meta_tag(page, d.tag_data)) > 0) {
@@ -107,14 +104,14 @@ void crawler_thread::crawl(queue_node_s& work_item, page_data_c* page, robots_tx
                     break;
                 }
 
-                case title:
+                case tag_type_title:
                     if(!d.tag_data.empty()) {
                         page->title = d.tag_data;
                         dbg_2<<"found title ["<<d.tag_data<<"]\n";
                     }
                     break;
 
-                case description:
+                case tag_type_description:
                     if(!d.tag_data.empty()) {
                         page->description += d.tag_data;
                         dbg_2<<"found page description str, adding ["<<d.tag_data<<"]\n";
@@ -150,7 +147,7 @@ void crawler_thread::crawl(queue_node_s& work_item, page_data_c* page, robots_tx
         for(auto& d: page_parser.data) {
             queue_node_s new_item;
 
-            if(d.tag_type == url) {
+            if(d.tag_type == tag_type_url) {
                 new_item.url = d.attr_data;
                 new_item.credit = transfer_credit;
                 ipc->send_item(new_item);
@@ -162,24 +159,37 @@ void crawler_thread::crawl(queue_node_s& work_item, page_data_c* page, robots_tx
 
 void crawler_thread::thread() throw(std::underflow_error)
 {
-    while(_status > STOP) {
+    mmgr_config page_mgr_cfg = {
+        .database_path = cfg.db_path,
+        .object_table = cfg.page_table,
+        .user_agent = cfg.user_agent
+    };
+    mmgr_config robots_mgr_cfg = {
+        .database_path = cfg.db_path,
+        .object_table = cfg.robots_table,
+        .user_agent = cfg.user_agent
+    };
+    memory_mgr<page_data_c> page_mgr(page_mgr_cfg);
+    memory_mgr<robots_txt> robots_mgr(robots_mgr_cfg);
+
+    while(thread_status > STOP) {
         try {
-            _status = IDLE;
+            thread_status = IDLE;
 
             //get next work item from process queue
             queue_node_s work_item = ipc->get_item();
-            _status = ACTIVE;
+            thread_status = ACTIVE;
             dbg<<"got work_item\n";
 
             //get memory
-            page_data_c* page = mem_mgr->get_page(work_item.url);
+            page_data_c* page = page_mgr.get_object_nblk(work_item.url);
             std::string root_url(work_item.url, 0, root_domain(work_item.url));
             dbg<<"root_url ["<<root_url<<"]\n";
-            robots_txt* robots = mem_mgr->get_robots_txt(root_url);
+            robots_txt* robots = robots_mgr.get_object_nblk(root_url);
 
 
             //robots.txt checks
-            if(std::difftime(std::time(0), robots->last_visit) >= ROBOTS_REFRESH) {
+            if(std::difftime(std::time(0), robots->last_visit()) >= ROBOTS_REFRESH) {
                 dbg<<"refreshing robots_txt\n";
                 robots->fetch(*netio_obj);
                 robots->last_visit = std::time(0);
@@ -196,7 +206,7 @@ void crawler_thread::thread() throw(std::underflow_error)
                     dbg<<"page->last_visit > 24 hours, resetting count & crawling\n";
                     page->crawl_count = 0;
                     crawl(work_item, page, robots);
-                } else if(std::difftime(std::time(0), robots->last_visit) >= robots->crawl_delay) {
+                } else if(std::difftime(std::time(0), robots->last_visit()) >= robots->crawl_delay) {
 
                     if(page->crawl_count >= cfg.day_max_crawls) {
                         dbg<<"page->crawl_count >= cfg.day_max_crawls\n";
@@ -215,21 +225,21 @@ void crawler_thread::thread() throw(std::underflow_error)
             }
 
             //robots_txt no longer needed
-            mem_mgr->put_robots_txt(robots, root_url);
+            robots_mgr.put_object_nblk(robots, root_url);
 
             //return or remove page
             if(leak_all_credit) {
                 tax(work_item.credit + page->rank, CREDIT_TAX_ALL);
                 page->rank = 0;
-                mem_mgr->free_page(page, work_item.url);
+                page_mgr.delete_object_nblk(page, work_item.url);
             } else {
-                mem_mgr->put_page(page, work_item.url);
+                page_mgr.put_object_nblk(page, work_item.url);
             }
 
             dbg<<">done.\n";
-            _status = IDLE;
+            thread_status = IDLE;
         } catch(std::underflow_error& e) {
-            _status = ZOMBIE;
+            thread_status = ZOMBIE;
             std::cerr<<"ipc work queue underrun: "<<e.what()<<std::endl;
             throw std::underflow_error("ipc_client::get_item reports empty");
         }
@@ -284,12 +294,12 @@ bool crawler_thread::sanitize_url_tag(struct data_node_s& d, std::string root_ur
             }
         } else {
             dbg<<"tag ["<<d.tag_name<<"] is empty, discarding\n";
-            d.tag_type = invalid;
+            d.tag_type = tag_type_invalid;
             ret = false;
         }
     } else {
         dbg<<"invalid tag name for url ["<<d.tag_name<<"]\n";
-        d.tag_type = invalid;
+        d.tag_type = tag_type_invalid;
         ret = false;
     }
 

@@ -8,6 +8,7 @@
 #include <atomic>
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/binary_object.hpp>
+#include <boost/serialization/array.hpp>
 #include "debug.hpp"
 
 /**
@@ -57,15 +58,16 @@ class page_data_c
     template<class Archive>
     void serialize(Archive& ar, const unsigned int version)
     {
+        // commented out fields do not appear to compile, but regardless..
         ar & rank;
         ar & crawl_count;
         //~ ar & boost::serialization::make_binary_object(&last_crawl, sizeof(last_crawl));
         ar & out_links;
-        //~ ar & url.raw();
+        ar & boost::serialization::make_binary_object((void*)url.data(), url.bytes());
         //~ ar & title.raw();
         //~ ar & description.raw();
-        //~ ar & boost::serialization::make_binary_object(meta.data(), meta.size());
-    }
+        //~ ar & boost::serialization::make_array(meta.data(), meta.size());
+    };
 
     private:
     std::mutex access_lock; //only one thread may access at a time, managed by cache class
