@@ -106,8 +106,8 @@ class robots_txt
         ar & disallow_list;
         ar & allow_list;
         ar & sitemap_url;
-        //~ ar & boost::serialization::make_binary_object(&timeout, sizeof(timeout));
-        //~ ar & boost::serialization::make_binary_object(&last_access, sizeof(last_access));
+        ar & boost::serialization::make_binary_object(&timeout, sizeof(timeout));
+        ar & boost::serialization::make_binary_object(&last_access, sizeof(last_access));
     }
 };
 

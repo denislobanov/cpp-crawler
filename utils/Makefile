@@ -1,0 +1,30 @@
+CC=clang++
+CPPFLAGS=-Wall -std=c++11 -g
+DEPENDENCIES=glibmm-2.4 libxml-2.0 glib-2.0
+OUT_DIR="."
+
+INCLUDES=$(shell pkg-config --cflags $(DEPENDENCIES)) -I../src/include
+LDDFLAGS=$(shell curl-config --libs) $(shell pkg-config --libs $(DEPENDENCIES))
+LIBRARIES=-lboost_system -lpthread -lboost_serialization
+
+UTILS=read_page
+
+all: tools
+
+tools: $(UTILS)
+ifneq ($(OUT_DIR), ".")
+		@echo "copying utils"
+		$(foreach ut, $(UTILS), $(shell mv $(ut) $(OUT_DIR)/$(ut)))
+endif
+
+clean:
+	rm -f $(UTILS) *.o
+
+$(UTILS):
+	$(CC) $(CPPFLAGS) $(INCLUDES) -c $@.cpp
+	$(CC) $(LDDFLAGS) -o $@ $@.o $(LIBRARIES)
+
+%.o : %.cpp
+	$(CC) $(CPPFLAGS) $(INCLUDES) -c $<
+
+.PHONY: all clean tools $(UTILS)

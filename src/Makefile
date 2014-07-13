@@ -3,7 +3,7 @@ CPPFLAGS=-Wall -std=c++11 -g
 DEPENDENCIES=glibmm-2.4 libxml-2.0 glib-2.0
 OUT_DIR="."
 
-INCLUDES=$(shell pkg-config --cflags $(DEPENDENCIES))
+INCLUDES=$(shell pkg-config --cflags $(DEPENDENCIES)) -I../src/include
 LDDFLAGS=$(shell curl-config --libs) $(shell pkg-config --libs $(DEPENDENCIES))
 LIBRARIES=-lboost_system -lpthread -lboost_serialization
 
