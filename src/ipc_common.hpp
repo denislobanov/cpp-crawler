@@ -8,10 +8,39 @@
 #define MASTER_SERVICE_NAME "23331"
 #define MASTER_SERVICE_PORT 23331
 
+//
+//IPC Meta definition
+//
 /**
- * status of crawler_thread
+ * Type of data sent in an ipc message
  */
-enum worker_status {
+enum data_type_e {
+    dt_instruction, //ctrl_instruction_e        worker <-> master
+    dt_wstatus,     //worker_status_e           worker -> master
+    dt_wcap,        //worker_capabilities_s     worker -> master
+    dt_wconfig,     //worker_config_s           worker <- master
+    dt_queue_node   //queue_node_s              worker <-> master
+};
+
+//
+// IPC Payload types
+//
+/**
+ * Bidirectional control instructions, can be sent from worker or master.
+ */
+enum ctrl_instruction_e {
+    ctrl_mnoconfig, //master has no config updates or no config present
+    ctrl_mstatus,   //master requests worker status
+    ctrl_mcap,      //master requests worker capabilities
+    ctrl_wconfig,   //worker requests new config (called on register, subsequent polls)
+    ctrl_wnodes,    //worker requests queue_nodes_s to process
+};
+
+/**
+ * Current worker status. Each crawler_thread keeps track of internal status,
+ * worker process then forms an aggregate which is sent to master (on request).
+ */
+enum worker_status_e {
     ZOMBIE,         //dead
     STOP,           //will die when current crawls complete
     IDLE,           //waiting for instructions
@@ -20,19 +49,27 @@ enum worker_status {
 };
 
 /**
- * CnC intructions to workers
+ * Worker capabilities, as reported to master
  */
-enum cnc_instruction {
-    w_register,     //worker requests config
-    w_get_work,     //worker requests work
-    w_send_work,    //worker sending completed work
-    m_send_status,  //master requests worker status
+struct worker_capabilities_s {
+    unsigned int parsers;           //parser threads (currently == crawler_threads)
+    unsigned int total_threads;     //total threads in worker
+
+    template<class Archive>
+    void serialize(Archive& ar, const unsigned int version)
+    {
+        ar & parsers;
+        ar & total_threads;
+    }
 };
 
 /**
- * worker config/registration data
+ * Meta description of tag search type, used by hardcoded logic in parser
+ * to fill out page_data_c
+ *
+ * Enum is part of tagdb_s for IPC
  */
-enum tag_type_e {            //part of parser configuration
+enum tag_type_e {
     tag_type_invalid,
     tag_type_url,
     tag_type_title,
@@ -42,7 +79,13 @@ enum tag_type_e {            //part of parser configuration
     tag_type_image
 };
 
-struct tagdb_s {            //part of parser configuration
+/**
+ * Used to configure page parsing parameters - thing to search for in a
+ * page.
+ *
+ * Struct is part of worker_config_s for IPC
+ */
+struct tagdb_s {
     tag_type_e tag_type;    //meta
 
     //FIXME: use Glib::ustring here - as xpaths need to be unicode
@@ -58,7 +101,12 @@ struct tagdb_s {            //part of parser configuration
     }
 };
 
-struct worker_config {
+/**
+ * Configuration parameters for each crawler_thread. Each worker requests
+ * this struct on registration with a master server and will periodically
+ * poll for updates.
+ */
+struct worker_config_s {
     friend class boost::serialization::access;
 
     std::string user_agent;         //to report to sites
@@ -96,35 +144,11 @@ struct worker_config {
 };
 
 /**
- * capabilities reported by worker
- */
-struct capabilities {
-    unsigned int parsers;           //parser threads
-    unsigned int total_threads;
-
-    template<class Archive>
-    void serialize(Archive& ar, const unsigned int version)
-    {
-        ar & parsers;
-        ar & total_threads;
-    }
-};
-
-/**
- * Type of data sent in an ipc message
- */
-enum data_type_e {
-    instruction,
-    cnc_data,
-    queue_node
-};
-
-/**
- * describes an entry in the crawl (IPC) queue
+ * Describes an entry in the crawl (IPC) queue
  */
 struct queue_node_s {
     unsigned int credit;    //cash given to link from referring page
-    std::string url;
+    std::string url;        //the url of found page (url to crawl)
 
     template<class Archive>
     void serialize(Archive& ar, const unsigned int version)

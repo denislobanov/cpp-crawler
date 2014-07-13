@@ -42,7 +42,7 @@ class dummy_server
         node_buffer.push(n);
     }
 
-    void set_worker_config(struct worker_config& worker_cfg)
+    void set_worker_config(struct worker_config_s& worker_cfg)
     {
         uut_cfg = worker_cfg;
     }
@@ -60,24 +60,24 @@ class dummy_server
     boost::lockfree::spsc_queue<struct queue_node_s, boost::lockfree::capacity<BUFFER_MAX_SIZE>> node_buffer;
 
     //thread data
-    struct worker_config uut_cfg; 
+    struct worker_config_s uut_cfg; 
 
     void do_accept(void)
     {
-        cout<<">do_accept()\n";
+        cout<<">server: do_accept()\n";
         acceptor_.async_accept(connection_.socket(),
             [this](boost::system::error_code ec)
             {
                 if(!ec) {
                     cout<<">server: accepted connection from client, waiting for initial data..\n";
-                    connection_.async_read(boost::bind(&dummy_server::read_cnc,
+                    connection_.async_read(boost::bind(&dummy_server::read_data,
                         this, boost::asio::placeholders::error));
                 }
             });
         ipc_service.run();
     }
 
-    void read_cnc(boost::system::error_code ec)
+    void read_data(boost::system::error_code ec)
     {
         //we're going to spend most of our time here, so this is a good
         //place to check for kill flags etc
@@ -87,78 +87,74 @@ class dummy_server
         }
 
         if(!ec) {
-            if(connection_.rdata_type() == instruction) {
-                cnc_instruction ipc_cnc = connection_.rdata<cnc_instruction>();
+            switch(connection_.rdata_type()) {
+            case dt_instruction:
+                cout<<">server: client sent ctrl_instruction"<<endl;
+                process_instruction(connection_.rdata<ctrl_instruction_e>());
+                break;
 
-                switch(ipc_cnc) {
-                case w_register:
-                    cout<<">server: recieved w_register from client\n";
-                    connection_.wdata_type(cnc_data);
-                    connection_.wdata(uut_cfg);
-                    connection_.async_write(boost::bind(&dummy_server::write_complete,
-                        this, boost::asio::placeholders::error));
-                    break;
+            case dt_wstatus:
+                cout<<">server: client sent status"<<endl;
+                cout<<">server: client status is "<<connection_.rdata<worker_status_e>()<<endl;
+                break;
 
-                case w_get_work:
-                    cout<<">server: sending queue_node_s to client\n";
-                    node_buffer.pop(ipc_qnode);
+            case dt_wcap:
+                cout<<">server: client sent capabilities (ignoring)"<<endl;
+                //ignore
+                break;
 
-                    connection_.wdata_type(queue_node);
-                    connection_.wdata(ipc_qnode);
-                    connection_.async_write(boost::bind(&dummy_server::read_cnc,
-                        this, boost::asio::placeholders::error));
-                    break;
+            case dt_queue_node:
+                cout<<">server: cient sent queue_node_s"<<endl;
+                ipc_qnode = connection_.rdata<queue_node_s>();
+                node_buffer.push(ipc_qnode);
+                break;
 
-                case w_send_work:
-                    cout<<">server: client about to send a queue_node_s\n";
-                    connection_.async_read(boost::bind(&dummy_server::read_qnode,
-                        this, boost::asio::placeholders::error));
-                    break;
-
-                default:
-                    cout<<">server: client sent invalid instruction "<<ipc_cnc<<endl;
-                    connection_.async_read(boost::bind(&dummy_server::read_cnc,
-                        this, boost::asio::placeholders::error));
-                    break;
-                }
-            } else {
+            default:
                 cerr<<">server: invalid data type from client, got: "<<connection_.rdata_type()<<endl;
-                connection_.async_read(boost::bind(&dummy_server::read_cnc,
-                    this, boost::asio::placeholders::error));
+                break;
             }
+
+            connection_.async_read(boost::bind(&dummy_server::read_data,
+                    this, boost::asio::placeholders::error));
         } else {
             throw ipc_exception("read_cnc() boost error: "+ec.message());
+        }
+    }
+
+    void process_instruction(ctrl_instruction_e instruction)
+    {
+        switch(instruction) {
+        case ctrl_wconfig:
+            cout<<">server: recieved ctrl_wconfig from client\n";
+
+            connection_.wdata_type(dt_wconfig);
+            connection_.wdata(uut_cfg);
+            connection_.async_write(boost::bind(&dummy_server::write_complete,
+                this, boost::asio::placeholders::error));
+            break;
+
+        case ctrl_wnodes:
+            cout<<">server: recieved ctrl_wnodes from client, sending (1)queue_node_s\n";
+            node_buffer.pop(ipc_qnode);
+
+            connection_.wdata_type(dt_queue_node);
+            connection_.wdata(ipc_qnode);
+            connection_.async_write(boost::bind(&dummy_server::write_complete,
+                this, boost::asio::placeholders::error));
+            break;
+
+        default:
+            cout<<">server: recieved unknown instruction "<<instruction<<" from client"<<endl;
+            break;
         }
     }
 
     void write_complete(const boost::system::error_code& ec)
     {
         if(!ec) {
-            cout<<">server: write to client successful, waiting for data\n";
-            connection_.async_read(boost::bind(&dummy_server::read_cnc,
-                this, boost::asio::placeholders::error));
+            cout<<">server: write to client successful\n";
         } else {
-            throw ipc_exception("process_instruction::w_register::write lambda - boost error: "+ec.message());
-        }
-    }
-
-    void read_qnode(const boost::system::error_code& ec)
-    {
-        if(!ec) {
-            if(connection_.rdata_type() == queue_node) {
-                ipc_qnode = connection_.rdata<struct queue_node_s>();
-                node_buffer.push(ipc_qnode);
-
-            } else {
-                cerr<<">server: client did not send a queue_node!\n";
-                cerr<<">server: data type from client "<<connection_.rdata_type()<<endl;
-            }
-
-            connection_.async_read(boost::bind(&dummy_server::read_cnc,
-                this, boost::asio::placeholders::error));
-
-        } else {
-            throw ipc_exception("read_qnode() boost error: "+ec.message());
+            throw ipc_exception("write_complete boost error: "+ec.message());
         }
     }
 };

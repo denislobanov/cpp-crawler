@@ -38,7 +38,7 @@ class crawler_thread
      * This will not block, but internal configuration is periodically
      * refreshed via the ipc_obj
      */
-    void start(worker_config& config);
+    void start(worker_config_s& config);
 
     /**
      * signals the internal thread to shut down once its completed its
@@ -51,11 +51,11 @@ class crawler_thread
     /**
      * Returns current status of internal crawler thread
      */
-    worker_status status(void);
+    worker_status_e status(void);
 
     private:
-    worker_status thread_status;
-    struct worker_config cfg;
+    worker_status_e thread_status;
+    struct worker_config_s cfg;
     std::string data;
     std::thread main_thread;
 

@@ -1,6 +1,8 @@
 #if !defined(DEBUG_H)
 #define DEBUG_H
 
+#define DEBUG 20
+
 #if !defined(dbg)
     #if defined(DEBUG)
         #define dbg std::cout<<__FILE__<<"("<<__LINE__<<"): "

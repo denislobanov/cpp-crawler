@@ -19,14 +19,14 @@ using std::endl;
 #define CRAWL_TIME std::chrono::seconds(2*60)
 
 //uut
-static struct ipc_config ipc_cfg = {
+static struct ipc_config_s ipc_cfg = {
     .gbuff_min = 2,
     .sbuff_max = 2,
     .sc = 2,
     .master_address = "127.0.0.1"
 };
 
-static struct worker_config worker_cfg = {
+static struct worker_config_s worker_cfg = {
     .user_agent = "test_ipc_client",
     .day_max_crawls = 5,
 

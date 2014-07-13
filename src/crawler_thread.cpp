@@ -15,7 +15,6 @@
 #include "page_data.hpp"
 #include "ipc_common.hpp"
 #include "memory_mgr.hpp"
-#define DEBUG 2
 #include "debug.hpp"
 
 //Local defines
@@ -23,6 +22,8 @@
 #define CREDIT_TAX_ALL 100
 
 
+//
+//public
 crawler_thread::crawler_thread(ipc_client* ipc_obj)
 {
     //set to idle on entry to main loop
@@ -45,7 +46,7 @@ void crawler_thread::start(void)
 }
 
 //pre-defined config data
-void crawler_thread::start(worker_config& config)
+void crawler_thread::start(worker_config_s& config)
 {
     cfg = config;
     netio_obj = new netio(cfg.user_agent);
@@ -53,23 +54,120 @@ void crawler_thread::start(worker_config& config)
     launch_thread();
 }
 
-//pointless?
 void crawler_thread::stop(void)
 {
     thread_status = STOP;
 }
 
-worker_status crawler_thread::status(void)
+worker_status_e crawler_thread::status(void)
 {
     return thread_status;
 }
 
+//
+//private
 void crawler_thread::launch_thread(void)
 {
     main_thread = std::thread(&crawler_thread::thread, this);
     dbg<<"launched thread\n";
 
     //main_thread.detatch()
+}
+
+void crawler_thread::thread() throw(std::underflow_error)
+{
+    mmgr_config page_mgr_cfg = {
+        .database_path = cfg.db_path,
+        .object_table = cfg.page_table,
+        .user_agent = cfg.user_agent
+    };
+    mmgr_config robots_mgr_cfg = {
+        .database_path = cfg.db_path,
+        .object_table = cfg.robots_table,
+        .user_agent = cfg.user_agent
+    };
+    memory_mgr<page_data_c> page_mgr(page_mgr_cfg);
+    memory_mgr<robots_txt> robots_mgr(robots_mgr_cfg);
+
+    while(thread_status > STOP) {
+        try {
+            thread_status = IDLE;
+
+            //get next work item from process queue
+            queue_node_s work_item = ipc->get_item();
+            thread_status = ACTIVE;
+            dbg<<"got work_item\n";
+
+            //get memory
+            page_data_c* page = page_mgr.get_object_nblk(work_item.url);
+            std::string root_url(work_item.url, 0, root_domain(work_item.url));
+            dbg<<"root_url ["<<root_url<<"]\n";
+
+            robots_txt* robots = robots_mgr.get_object_nblk(root_url);
+            robots->configure(cfg.user_agent, root_url);
+
+            //robots.txt checks
+            std::chrono::seconds robots_refresh_time(ROBOTS_REFRESH);
+            std::chrono::system_clock::time_point now_time = std::chrono::system_clock::now();
+
+            if(std::chrono::duration_cast<std::chrono::seconds>
+                (now_time - robots->last_visit()) >= robots_refresh_time) {
+                dbg<<"refreshing robots_txt\n";
+                robots->fetch(*netio_obj);
+                //robots last_visit time is updated automatically
+            }
+
+            //can we crawl this page?
+            bool leak_all_credit = false;
+            if(!robots->exclude(work_item.url)) {
+                //measures to prevent excessive crawling
+                std::chrono::hours one_day(24);
+
+                if(std::chrono::duration_cast<std::chrono::hours>
+                    (now_time - page->last_crawl) >= one_day) {
+
+                    dbg<<"page->last_visit > 24 hours, resetting count & crawling\n";
+                    page->crawl_count = 0;
+                    crawl(work_item, page, robots);
+                } else if(std::chrono::duration_cast<std::chrono::hours>
+                    (now_time - robots->last_visit()) >= robots->crawl_delay()) {
+
+                    if(page->crawl_count >= cfg.day_max_crawls) {
+                        dbg<<"page->crawl_count >= cfg.day_max_crawls\n";
+                        leak_all_credit = true;
+                    }
+                    crawl(work_item, page, robots);
+                } else {
+                    //re-queue page for later processing
+                    ipc->send_item(work_item);
+                }
+            } else {
+                //page is excluded, send all page credit to tax, and
+                //free existing memory (it should not be stored in db)
+                dbg<<"page ["<<work_item.url<<"] excluded, removing from database & memory\n";
+                leak_all_credit = true;
+            }
+
+            //robots_txt no longer needed
+            robots_mgr.put_object_nblk(robots, root_url);
+
+            //return or remove page
+            if(leak_all_credit) {
+                tax(work_item.credit + page->rank, CREDIT_TAX_ALL);
+                page->rank = 0;
+                page_mgr.delete_object_nblk(page, work_item.url);
+            } else {
+                page_mgr.put_object_nblk(page, work_item.url);
+            }
+
+            dbg<<">done.\n";
+            thread_status = IDLE;
+        } catch(std::underflow_error& e) {
+            thread_status = ZOMBIE;
+            std::cerr<<"ipc work queue underrun: "<<e.what()<<std::endl;
+            throw std::underflow_error("ipc_client::get_item reports empty");
+        }
+    }
 }
 
 void crawler_thread::crawl(queue_node_s& work_item, page_data_c* page, robots_txt* robots)
@@ -154,103 +252,6 @@ void crawler_thread::crawl(queue_node_s& work_item, page_data_c* page, robots_tx
                 ipc->send_item(new_item);
                 dbg_2<<"added ["<<new_item.url<<"] to queue\n";
             }
-        }
-    }
-}
-
-void crawler_thread::thread() throw(std::underflow_error)
-{
-    mmgr_config page_mgr_cfg = {
-        .database_path = cfg.db_path,
-        .object_table = cfg.page_table,
-        .user_agent = cfg.user_agent
-    };
-    mmgr_config robots_mgr_cfg = {
-        .database_path = cfg.db_path,
-        .object_table = cfg.robots_table,
-        .user_agent = cfg.user_agent
-    };
-    memory_mgr<page_data_c> page_mgr(page_mgr_cfg);
-    memory_mgr<robots_txt> robots_mgr(robots_mgr_cfg);
-
-    while(thread_status > STOP) {
-        try {
-            thread_status = IDLE;
-
-            //get next work item from process queue
-            queue_node_s work_item = ipc->get_item();
-            thread_status = ACTIVE;
-            dbg<<"got work_item\n";
-
-            //get memory
-            page_data_c* page = page_mgr.get_object_nblk(work_item.url);
-            std::string root_url(work_item.url, 0, root_domain(work_item.url));
-            dbg<<"root_url ["<<root_url<<"]\n";
-
-            robots_txt* robots = robots_mgr.get_object_nblk(root_url);
-            robots->configure(cfg.user_agent, root_url);
-
-
-            //robots.txt checks
-            std::chrono::seconds robots_refresh_time(ROBOTS_REFRESH);
-            std::chrono::system_clock::time_point now_time = std::chrono::system_clock::now();
-
-            if(std::chrono::duration_cast<std::chrono::seconds>
-                (now_time - robots->last_visit()) >= robots_refresh_time) {
-                dbg<<"refreshing robots_txt\n";
-                robots->fetch(*netio_obj);
-                //robots last_visit time is updated automatically
-            }
-
-            //can we crawl this page?
-            bool leak_all_credit = false;
-            if(!robots->exclude(work_item.url)) {
-                //measures to prevent excessive crawling
-                std::chrono::hours one_day(24);
-
-                if(std::chrono::duration_cast<std::chrono::hours>
-                    (now_time - page->last_crawl) >= one_day) {
-
-                    dbg<<"page->last_visit > 24 hours, resetting count & crawling\n";
-                    page->crawl_count = 0;
-                    crawl(work_item, page, robots);
-                } else if(std::chrono::duration_cast<std::chrono::hours>
-                    (now_time - robots->last_visit()) >= robots->crawl_delay()) {
-
-                    if(page->crawl_count >= cfg.day_max_crawls) {
-                        dbg<<"page->crawl_count >= cfg.day_max_crawls\n";
-                        leak_all_credit = true;
-                    }
-                    crawl(work_item, page, robots);
-                } else {
-                    //re-queue page for later processing
-                    ipc->send_item(work_item);
-                }
-            } else {
-                //page is excluded, send all page credit to tax, and
-                //free existing memory (it should not be stored in db)
-                dbg<<"page ["<<work_item.url<<"] excluded, removing from database & memory\n";
-                leak_all_credit = true;
-            }
-
-            //robots_txt no longer needed
-            robots_mgr.put_object_nblk(robots, root_url);
-
-            //return or remove page
-            if(leak_all_credit) {
-                tax(work_item.credit + page->rank, CREDIT_TAX_ALL);
-                page->rank = 0;
-                page_mgr.delete_object_nblk(page, work_item.url);
-            } else {
-                page_mgr.put_object_nblk(page, work_item.url);
-            }
-
-            dbg<<">done.\n";
-            thread_status = IDLE;
-        } catch(std::underflow_error& e) {
-            thread_status = ZOMBIE;
-            std::cerr<<"ipc work queue underrun: "<<e.what()<<std::endl;
-            throw std::underflow_error("ipc_client::get_item reports empty");
         }
     }
 }

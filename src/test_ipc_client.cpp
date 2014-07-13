@@ -15,14 +15,14 @@ using std::endl;
 #define GET_SEND_LOOPS  2048
 
 //uut
-static struct ipc_config test_cfg = {
+static struct ipc_config_s test_cfg = {
     .gbuff_min = 2,
     .sbuff_max = 2,
     .sc = 2,
     .master_address = "127.0.0.1"
 };
 
-static struct worker_config worker_test_cfg = {
+static struct worker_config_s worker_test_cfg = {
     .user_agent = "test_ipc_client",
     .day_max_crawls = 5,
 
@@ -53,7 +53,7 @@ int main(void)
     cout<<">done.\n";
 
     cout<<">test_client getting config from server\n";
-    struct worker_config ret_wcfg = test_client.get_config();
+    struct worker_config_s ret_wcfg = test_client.get_config();
 
     cout<<">beggining send/get loop of "<<GET_SEND_LOOPS<<" items\n---\n";
     for(unsigned int i = 0; i < GET_SEND_LOOPS; ++i) {

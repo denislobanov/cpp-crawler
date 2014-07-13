@@ -14,6 +14,21 @@
 
 #include "ipc_common.hpp"
 
+/**
+ * Message class, this abstracts communications and is what is actually
+ * sent down the line.
+ *
+ * Messages always contain a type which signifies the message contents and
+ * a payload - the data type of which was specified earlier.
+ * 
+ * For type definition see data_type_e.
+ * Payload types may be
+ *  - queue_node_s
+ *  - capabilities
+ *  - worker_config
+ *  - worker_status_e
+ *  - cnc_instruction_e
+ */
 class connection
 {
     public:
