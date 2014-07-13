@@ -15,6 +15,7 @@
 #include "page_data.hpp"
 #include "ipc_common.hpp"
 #include "memory_mgr.hpp"
+#define DEBUG 2
 #include "debug.hpp"
 
 //Local defines

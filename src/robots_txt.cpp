@@ -6,27 +6,13 @@
 
 #include "robots_txt.hpp"
 #include "netio.hpp"
+#include "debug.hpp"
 
 //Local defines
-//~ #define DEBUG 1
-
 //in the event that robots.txt does not provide a 'Crawl-delay:' command, use this
 #define DEFAULT_CRAWL_DELAY 60  //seconds
-
 #if (defined(DEBUG))&&(DEBUG > 2)
 #include <fstream>
-#endif
-
-#if defined(DEBUG)
-    #define dbg std::cout<<__FILE__<<"("<<__LINE__<<"): "
-    #if DEBUG > 1
-        #define dbg_1 std::cout<<__FILE__<<"("<<__LINE__<<"): "
-    #else
-        #define dbg_1 0 && std::cout
-    #endif
-#else
-    #define dbg 0 && std::cout
-    #define dbg_1 0 && std::cout
 #endif
 
 robots_txt::robots_txt(std::string user_agent, std::string root_domain, netio& netio_obj)

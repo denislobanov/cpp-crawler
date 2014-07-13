@@ -9,24 +9,11 @@
 
 #include "parser.hpp"
 #include "ipc_common.hpp"
+#include "debug.hpp"
 
 //Local defines
-//~ #define DEBUG 0
-
 #if (defined(DEBUG))&&(DEBUG > 2)
 #include <fstream>
-#endif
-
-#if defined(DEBUG)
-    #define dbg std::cout<<__FILE__<<"("<<__LINE__<<"): "
-    #if DEBUG > 1
-        #define dbg_2 std::cout<<__FILE__<<"("<<__LINE__<<"): "
-    #else
-        #define dbg_2 0 && std::cout
-    #endif
-#else
-    #define dbg 0 && std::cout
-    #define dbg_2 0 && std::cout
 #endif
 
 parser::parser(Glib::ustring url)

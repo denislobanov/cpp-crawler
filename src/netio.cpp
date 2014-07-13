@@ -4,19 +4,7 @@
 #include <curl/curl.h>
 
 #include "netio.hpp"
-
-//Local defines
-#if defined(DEBUG)
-    #define dbg std::cout<<__FILE__<<"("<<__LINE__<<"): "
-    #if DEBUG > 1
-        #define dbg_1 std::cout<<__FILE__<<"("<<__LINE__<<"): "
-    #else
-        #define dbg_1 0 && std::cout
-    #endif
-#else
-    #define dbg 0 && std::cout
-    #define dbg_1 0 && std::cout
-#endif
+#include "debug.hpp"
 
 netio::netio(std::string user_agent_string)
 {

@@ -17,19 +17,6 @@
 #define CACHE_RES   0
 //total cache size is thus CACHE_MAX - CACHE_RES
 
-#if !defined(dbg)
-    #if defined(DEBUG)
-        #define dbg std::cout<<__FILE__<<"("<<__LINE__<<"): "
-    #else
-        #define dbg 0 && std::cout
-    #endif
-    #if !defined(dbg_1) && DEBUG > 1
-        #define dbg_1 std::cout<<__FILE__<<"("<<__LINE__<<"): "
-    #else
-        #define dbg_1 0 && std::cout
-    #endif
-#endif
-
 template<class T> class cache
 {
     public:

@@ -22,7 +22,7 @@ int main(void)
     memory_mgr<page_data_c> test_mgr(config);
     page_data_c* test_page;
     
-    int max_runs = CACHE_MAX;
+    int max_runs = CACHE_MAX*2;
 
     //fill cache&db
     cout<<"creating "<<max_runs<<" pages"<<endl;
