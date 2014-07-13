@@ -9,6 +9,7 @@
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/binary_object.hpp>
 #include <boost/serialization/array.hpp>
+#include <boost/serialization/string.hpp>
 #include "debug.hpp"
 
 /**
@@ -61,12 +62,12 @@ class page_data_c
         // commented out fields do not appear to compile, but object fully serealizes regardless
         ar & rank;
         ar & crawl_count;
-        //~ ar & boost::serialization::make_binary_object(&last_crawl, sizeof(last_crawl));
+        ar & boost::serialization::make_binary_object(&last_crawl, sizeof(last_crawl));
         ar & out_links;
         ar & boost::serialization::make_binary_object((void*)url.data(), url.bytes());
-        //~ ar & title.raw();
-        //~ ar & description.raw();
-        //~ ar & boost::serialization::make_array(meta.data(), meta.size());
+        ar & boost::serialization::make_binary_object((void*)title.data(), title.bytes());
+        ar & boost::serialization::make_binary_object((void*)description.data(), description.bytes());
+        ar & boost::serialization::make_binary_object((void*)meta.data(), meta.size());
     };
 
     private:

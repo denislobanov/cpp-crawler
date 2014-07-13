@@ -1,7 +1,7 @@
 #if !defined(DEBUG_H)
 #define DEBUG_H
 
-#define DEBUG 20
+#define DEBUG 2
 
 #if !defined(dbg)
     #if defined(DEBUG)
