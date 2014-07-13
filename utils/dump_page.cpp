@@ -9,8 +9,9 @@ using std::endl;
 
 void print_usage(void)
 {
-    cout<<"Usage:\n\tread_page [list of pages]"<<endl;
-    cout<<"Example:\n\tread_page 1234567890 2345678901"<<endl;
+    cout<<"Usage:\n\tdump_page [list of pages]"<<endl;
+    cout<<"About:\n\tDumps the entire contents of [n] pages_data_c entries from a file_db type database."<<endl;
+    cout<<"Example:\n\tdump_page 6979709447096664111 4990958972598834934"<<endl;
 }
 
 int main(int argc, char* argv[])

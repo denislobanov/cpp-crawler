@@ -9,7 +9,6 @@
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/binary_object.hpp>
 #include <boost/serialization/split_member.hpp>
-#include <boost/serialization/base_object.hpp>
 #include "debug.hpp"
 
 /**
@@ -59,11 +58,10 @@ class page_data_c
     template<class Archive>
     void save(Archive& ar, const unsigned int version) const
     {
-        ar << boost::serialization::base_object<const page_data_c>(*this);
-
+        dbg_2<<"serializing data\n";
         ar << rank;
         ar << crawl_count;
-        ar << boost::serialization::make_binary_object(&last_crawl, sizeof(last_crawl));
+        ar << boost::serialization::make_binary_object((void*)&last_crawl, sizeof(last_crawl));
         ar << out_links;
 
         std::string url_str = url.raw();
@@ -78,13 +76,14 @@ class page_data_c
             meta_raw.push_back(meta.at(i).raw());
         }
         ar << meta_raw;
+
+        dbg_2<<"done!\n";
     };
 
     template<class Archive>
     void load(Archive& ar, const unsigned int version)
     {
-        ar >> boost::serialization::base_object<page_data_c>(*this);
-
+        dbg_2<<"de-serializing data\n";
         ar >> rank;
         ar >> crawl_count;
         ar >> boost::serialization::make_binary_object(&last_crawl, sizeof(last_crawl));
@@ -104,6 +103,8 @@ class page_data_c
         ar >> meta_raw;
         for(auto x: meta_raw)
             meta.push_back(x);
+
+        dbg_2<<"done!\n";
     };
 
     BOOST_SERIALIZATION_SPLIT_MEMBER();

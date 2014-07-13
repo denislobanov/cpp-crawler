@@ -7,7 +7,7 @@ INCLUDES=$(shell pkg-config --cflags $(DEPENDENCIES)) -I../src/include
 LDDFLAGS=$(shell curl-config --libs) $(shell pkg-config --libs $(DEPENDENCIES))
 LIBRARIES=-lboost_system -lpthread -lboost_serialization
 
-UTILS=read_page
+UTILS=dump_page dump_robots
 
 all: tools
 

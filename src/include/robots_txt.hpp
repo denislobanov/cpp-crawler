@@ -6,6 +6,7 @@
 #include <vector>
 #include <atomic>
 #include <boost/serialization/binary_object.hpp>
+#include <boost/serialization/split_member.hpp>
 
 class netio;
 
@@ -97,18 +98,34 @@ class robots_txt
     void sanitize(std::string& data, std::string bad_char);
 
     template<class Archive>
-    void serialize(Archive& ar, const unsigned int version)
+    void save(Archive& ar, const unsigned int version) const
     {
-        ar & can_crawl;
-        ar & process_param;
-        ar & agent_name;
-        ar & domain;
-        ar & disallow_list;
-        ar & allow_list;
-        ar & sitemap_url;
-        ar & boost::serialization::make_binary_object(&timeout, sizeof(timeout));
-        ar & boost::serialization::make_binary_object(&last_access, sizeof(last_access));
-    }
+        ar << can_crawl;
+        ar << process_param;
+        ar << agent_name;
+        ar << domain;
+        ar << disallow_list;
+        ar << allow_list;
+        ar << sitemap_url;
+        ar << boost::serialization::make_binary_object((void*)&timeout, sizeof(timeout));
+        ar << boost::serialization::make_binary_object((void*)&last_access, sizeof(last_access));
+    };
+
+    template<class Archive>
+    void load(Archive& ar, const unsigned int version)
+    {
+        ar >> can_crawl;
+        ar >> process_param;
+        ar >> agent_name;
+        ar >> domain;
+        ar >> disallow_list;
+        ar >> allow_list;
+        ar >> sitemap_url;
+        ar >> boost::serialization::make_binary_object(&timeout, sizeof(timeout));
+        ar >> boost::serialization::make_binary_object(&last_access, sizeof(last_access));
+    };
+
+    BOOST_SERIALIZATION_SPLIT_MEMBER();
 };
 
 #endif

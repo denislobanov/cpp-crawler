@@ -1,2 +1,5 @@
 *.o
-read_page
+dump_page
+dump_robots
+list_pages
+list_robots

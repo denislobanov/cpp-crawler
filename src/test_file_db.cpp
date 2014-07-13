@@ -32,7 +32,7 @@ int main(void)
     write_page->meta = {"some", "keywords", "for", "testing"};
 
     //send to db
-    cout<<"sending page to database.."<<endl;
+    cout<<"sending page to database at time:"<<std::chrono::system_clock::to_time_t(write_page->last_crawl)<<endl;
     page_db.put_object(write_page, test_url);
 
     //retrieve
@@ -46,7 +46,7 @@ int main(void)
         return -1;
     }
 
-    cout<<"page url: "<<read_page->url;
+    cout<<"page url: "<<read_page->url<<endl;
     cout<<"page rank: "<<read_page->rank<<endl;
     cout<<"crawl count: "<<read_page->crawl_count<<endl;
     cout<<"last crawl: "<<std::chrono::system_clock::to_time_t(read_page->last_crawl)<<endl;
