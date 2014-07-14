@@ -72,7 +72,7 @@ class page_data_c
         ar << description_str;
 
         std::vector<std::string> meta_raw;
-        for(int i = 0;i<meta.size();++i) {
+        for(unsigned i = 0;i<meta.size();++i) {
             meta_raw.push_back(meta.at(i).raw());
         }
         ar << meta_raw;

@@ -1,8 +1,10 @@
 #include <iostream>
 #include <chrono>
+#include <fstream>
+#include <sstream>
+#include <boost/archive/binary_iarchive.hpp>
 
 #include "page_data.hpp"
-#include "file_db.hpp"
 
 using std::cout;
 using std::endl;
@@ -24,7 +26,7 @@ int main(int argc, char* argv[])
     int i;
     for(i=1;i<argc;++i) {
         cout<<"Reading page "<<argv[i]<<endl;
-        cout<<"------------"<<endl;
+        cout<<"---"<<endl;
 
         //iterate through all given pages. try to retrieve and dump each one
         std::ifstream file_data(argv[i]);
@@ -47,7 +49,7 @@ int main(int argc, char* argv[])
             cout<<"\nmeta:"<<endl;
             for(auto& x: page.meta)
                 cout<<"\t"<<x<<endl;
-            cout<<"\n------------"<<endl;
+            cout<<"\n----"<<endl;
         }
     }
     return 0;

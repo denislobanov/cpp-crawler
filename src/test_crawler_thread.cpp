@@ -89,6 +89,5 @@ int main(void)
     std::this_thread::sleep_for(std::chrono::seconds(1));
     cout<<"\n\n>done.\n";
 
-    //analyse data
     return 0;
 }

@@ -1,10 +1,11 @@
 #if !defined (ROBOTS_TXT_H)
 #define ROBOTS_TXT_H
 
-#include <iostream>
 #include <chrono>
+#include <ctime>
 #include <vector>
 #include <atomic>
+#include <boost/serialization/vector.hpp>
 #include <boost/serialization/binary_object.hpp>
 #include <boost/serialization/split_member.hpp>
 
@@ -107,8 +108,17 @@ class robots_txt
         ar << disallow_list;
         ar << allow_list;
         ar << sitemap_url;
-        ar << boost::serialization::make_binary_object((void*)&timeout, sizeof(timeout));
-        ar << boost::serialization::make_binary_object((void*)&last_access, sizeof(last_access));
+
+        //serialize last_access
+        time_t tt = std::chrono::system_clock::to_time_t(last_access);
+        ar << tt;
+        
+
+        //serialize timeout as a delta of two time points
+        // t1 = t2 + timeout        -- last_access is t2
+        std::chrono::system_clock::time_point t = last_access + timeout;
+        tt = std::chrono::system_clock::to_time_t(t);
+        ar << tt;
     };
 
     template<class Archive>
@@ -121,8 +131,17 @@ class robots_txt
         ar >> disallow_list;
         ar >> allow_list;
         ar >> sitemap_url;
-        ar >> boost::serialization::make_binary_object(&timeout, sizeof(timeout));
-        ar >> boost::serialization::make_binary_object(&last_access, sizeof(last_access));
+
+        //deserialize last_access
+        time_t tt;
+        ar >> tt;
+        last_access = std::chrono::system_clock::from_time_t(tt);
+
+        //deserialize timeout, inverse of save() thus:
+        // timeout = t1 - t2        -- last_access is t2
+        ar >> tt;
+        std::chrono::system_clock::time_point t = std::chrono::system_clock::from_time_t(tt);
+        timeout = std::chrono::duration_cast<std::chrono::seconds>(t - last_access);
     };
 
     BOOST_SERIALIZATION_SPLIT_MEMBER();

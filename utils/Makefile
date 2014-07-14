@@ -7,6 +7,8 @@ INCLUDES=$(shell pkg-config --cflags $(DEPENDENCIES)) -I../src/include
 LDDFLAGS=$(shell curl-config --libs) $(shell pkg-config --libs $(DEPENDENCIES))
 LIBRARIES=-lboost_system -lpthread -lboost_serialization
 
+COMMON_OBJECTS=../src/netio.o ../src/robots_txt.o
+
 UTILS=dump_page dump_robots
 
 all: tools
@@ -20,9 +22,9 @@ endif
 clean:
 	rm -f $(UTILS) *.o
 
-$(UTILS):
+$(UTILS): $(COMMON_OBJECTS)
 	$(CC) $(CPPFLAGS) $(INCLUDES) -c $@.cpp
-	$(CC) $(LDDFLAGS) -o $@ $@.o $(LIBRARIES)
+	$(CC) $(LDDFLAGS) -o $@ $@.o $(COMMON_OBJECTS) $(LIBRARIES)
 
 %.o : %.cpp
 	$(CC) $(CPPFLAGS) $(INCLUDES) -c $<

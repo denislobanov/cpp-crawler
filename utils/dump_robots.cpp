@@ -1,5 +1,8 @@
 #include <iostream>
 #include <chrono>
+#include <fstream>
+#include <sstream>
+#include <boost/archive/binary_iarchive.hpp>
 
 #include "robots_txt.hpp"
 
@@ -23,7 +26,7 @@ int main(int argc, char* argv[])
     int i;
     for(i=1;i<argc;++i) {
         cout<<"Reading robots_txt "<<argv[i]<<endl;
-        cout<<"------------------"<<endl;
+        cout<<"---"<<endl;
 
         //iterate through all given pages. try to retrieve and dump each one
         std::ifstream file_data(argv[i]);
@@ -34,9 +37,9 @@ int main(int argc, char* argv[])
             arch>>robot;
             file_data.close();
 
-            cout<<"last visit: ["<<std::chrono::system_clock::to_time_t(write_robots->last_visit())<<"]"<<endl;
-            cout<<"crawl delay: ["<<write_robots->crawl_delay().count()<<"]"<<endl;
-            cout<<"\n------------------"<<endl;
+            cout<<"last visit: ["<<std::chrono::system_clock::to_time_t(robot.last_visit())<<"]"<<endl;
+            cout<<"crawl delay: ["<<robot.crawl_delay().count()<<"]"<<endl;
+            cout<<"\n---"<<endl;
         }
     }
     return 0;
