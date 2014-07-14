@@ -101,7 +101,7 @@ void crawler_thread::thread() throw(std::underflow_error)
             //get memory
             page_data_c* page = page_mgr.get_object_nblk(work_item.url);
             std::string root_url(work_item.url, 0, root_domain(work_item.url));
-            dbg<<"root_url ["<<root_url<<"]\n";
+            std::cout<<"root_url ["<<root_url<<"]\n";
 
             robots_txt* robots = robots_mgr.get_object_nblk(root_url);
             robots->configure(cfg.user_agent, root_url);
@@ -118,47 +118,63 @@ void crawler_thread::thread() throw(std::underflow_error)
             }
 
             //can we crawl this page?
-            bool leak_all_credit = false;
             if(!robots->exclude(work_item.url)) {
                 //measures to prevent excessive crawling
                 std::chrono::hours one_day(24);
 
-                if(std::chrono::duration_cast<std::chrono::hours>
-                    (now_time - page->last_crawl) >= one_day) {
+                //domain crawl timeout is enforced via the (domain) root page
+                page_data_c* root_page;
+                if(work_item.url != root_url)
+                    root_page = page_mgr.get_object_nblk(root_url);
+                else
+                    root_page = page;
 
-                    dbg<<"page->last_visit > 24 hours, resetting count & crawling\n";
-                    page->crawl_count = 0;
-                    crawl(work_item, page, robots);
-                } else if(std::chrono::duration_cast<std::chrono::hours>
-                    (now_time - robots->last_visit()) >= robots->crawl_delay()) {
-
-                    if(page->crawl_count >= cfg.day_max_crawls) {
-                        dbg<<"page->crawl_count >= cfg.day_max_crawls\n";
-                        leak_all_credit = true;
+                //if a page from the root domain has been recently crawled or,
+                // *this* page has been crawled too often already (past 24hrs)
+                //then, we requeue the work order and get on with something
+                //else to avoid stalling.
+                if((std::chrono::duration_cast<std::chrono::seconds>
+                    (now_time - root_page->last_crawl) < robots->crawl_delay())
+                   and(page->crawl_count < cfg.day_max_crawls))
+                {
+                    //special case
+                    if(std::chrono::duration_cast<std::chrono::hours>
+                        (now_time - page->last_crawl) >= one_day) {
+                            
+                        dbg<<"page->last_visit > 24 hours, resetting count & crawling\n";
+                        page->crawl_count = 0;
                     }
+
+                    dbg<<"crawling page ["<<work_item.url<<"]\n";
                     crawl(work_item, page, robots);
                 } else {
+                    dbg<<"page ["<<work_item.url<<"] has either been recently crawled or root domain ["<<root_url<<"] has recently been visited\n";
+                    dbg<<"crawl count: "<<page->crawl_count<<std::endl;
+                    dbg<<"root domain last crawl time: "<<std::chrono::system_clock::to_time_t(root_page->last_crawl)<<std::endl;
+                    dbg<<"delta to now: "<<std::chrono::duration_cast<std::chrono::seconds>
+                        (now_time - root_page->last_crawl).count()<<std::endl;
+                    dbg<<"crawl delay: "<<robots->crawl_delay().count()<<std::endl;
+
                     //re-queue page for later processing
                     ipc->send_item(work_item);
                 }
+
+                page_mgr.put_object_nblk(page, work_item.url);
+                if(work_item.url != root_url)
+                    page_mgr.put_object_nblk(root_page, root_url);
+
+            //domains robots.txt lists this page as now excluded, so we
+            //remove it from the database.
             } else {
-                //page is excluded, send all page credit to tax, and
-                //free existing memory (it should not be stored in db)
                 dbg<<"page ["<<work_item.url<<"] excluded, removing from database & memory\n";
-                leak_all_credit = true;
+
+                //send all page credit to tax
+                page->rank = tax(work_item.credit + page->rank, CREDIT_TAX_ALL);
+                page_mgr.delete_object_nblk(page, work_item.url);
             }
 
             //robots_txt no longer needed
             robots_mgr.put_object_nblk(robots, root_url);
-
-            //return or remove page
-            if(leak_all_credit) {
-                tax(work_item.credit + page->rank, CREDIT_TAX_ALL);
-                page->rank = 0;
-                page_mgr.delete_object_nblk(page, work_item.url);
-            } else {
-                page_mgr.put_object_nblk(page, work_item.url);
-            }
 
             dbg<<">done.\n";
             thread_status = IDLE;
@@ -268,8 +284,8 @@ size_t crawler_thread::root_domain(std::string& url)
 {
     //consider longest scheme name
     //  01234567
-    // "https://" next "/" is at the end of the root url
-    size_t ret = url.find_first_of("/", 8);
+    // "https://" next charecter '/','#' or '?' is at the end of the root url
+    size_t ret = url.find_first_of("/#?", 8);
     if(ret > url.length())
         ret = url.length();
 

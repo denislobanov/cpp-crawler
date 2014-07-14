@@ -22,6 +22,9 @@ class page_data_c
     page_data_c(void)
     {
         use_count = 0;
+        crawl_count = 0;
+        rank = 0;
+        last_crawl = std::chrono::system_clock::now();
     }
 
     //page meta data

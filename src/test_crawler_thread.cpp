@@ -16,7 +16,7 @@ using std::cout;
 using std::endl;
 
 #define INITIAL_CREDIT 100
-#define CRAWL_TIME std::chrono::seconds(2*60)
+#define CRAWL_TIME std::chrono::seconds(30*60)
 
 //uut
 static struct ipc_config_s ipc_cfg = {

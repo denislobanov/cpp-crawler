@@ -90,7 +90,7 @@ template<typename T> void database<T>::get_object(T*& t, std::string& key) throw
     if(file_data) {
         //deserealize
         boost::archive::binary_iarchive arch(file_data);
-        arch>> t;
+        arch>>t;
 
         file_data.close();
     }
