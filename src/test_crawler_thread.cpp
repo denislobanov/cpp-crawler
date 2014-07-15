@@ -67,6 +67,9 @@ int main(void)
     struct queue_node_s n = {.url="http://en.wikipedia.org", .credit = INITIAL_CREDIT};
     srv.push(n);
     cout<<">added seed url=["<<n.url<<"] credit=["<<INITIAL_CREDIT<<"]\n";
+    n = {.url="http://geeksaresexy.net", .credit = INITIAL_CREDIT};
+    srv.push(n);
+    cout<<">added seed url=["<<n.url<<"] credit=["<<INITIAL_CREDIT<<"]\n";
 
     srv.set_worker_config(worker_cfg);
     cout<<">done.\n";

@@ -11,6 +11,7 @@
 
 #include "ipc_client.hpp"
 #include "connection.hpp"
+#include "debug.hpp"
 
 using std::cout;
 using std::cerr;
@@ -64,12 +65,12 @@ class dummy_server
 
     void do_accept(void)
     {
-        cout<<">server: do_accept()\n";
+        dbg_2<<">server: do_accept()\n";
         acceptor_.async_accept(connection_.socket(),
             [this](boost::system::error_code ec)
             {
                 if(!ec) {
-                    cout<<">server: accepted connection from client, waiting for initial data..\n";
+                    dbg_2<<">server: accepted connection from client, waiting for initial data..\n";
                     connection_.async_read(boost::bind(&dummy_server::read_data,
                         this, boost::asio::placeholders::error));
                 }
@@ -82,29 +83,29 @@ class dummy_server
         //we're going to spend most of our time here, so this is a good
         //place to check for kill flags etc
         if(!running) {
-            cout<<">server: exiting\n";
+            dbg_2<<">server: exiting\n";
             return;
         }
 
         if(!ec) {
             switch(connection_.rdata_type()) {
             case dt_instruction:
-                cout<<">server: client sent ctrl_instruction"<<endl;
+                dbg_2<<">server: client sent ctrl_instruction"<<endl;
                 process_instruction(connection_.rdata<ctrl_instruction_e>());
                 break;
 
             case dt_wstatus:
-                cout<<">server: client sent status"<<endl;
-                cout<<">server: client status is "<<connection_.rdata<worker_status_e>()<<endl;
+                dbg_2<<">server: client sent status"<<endl;
+                dbg_2<<">server: client status is "<<connection_.rdata<worker_status_e>()<<endl;
                 break;
 
             case dt_wcap:
-                cout<<">server: client sent capabilities (ignoring)"<<endl;
+                dbg_2<<">server: client sent capabilities (ignoring)"<<endl;
                 //ignore
                 break;
 
             case dt_queue_node:
-                cout<<">server: cient sent queue_node_s"<<endl;
+                dbg_2<<">server: cient sent queue_node_s"<<endl;
                 ipc_qnode = connection_.rdata<queue_node_s>();
                 node_buffer.push(ipc_qnode);
                 break;
@@ -125,7 +126,7 @@ class dummy_server
     {
         switch(instruction) {
         case ctrl_wconfig:
-            cout<<">server: recieved ctrl_wconfig from client\n";
+            dbg_2<<">server: recieved ctrl_wconfig from client\n";
 
             connection_.wdata_type(dt_wconfig);
             connection_.wdata(uut_cfg);
@@ -134,7 +135,7 @@ class dummy_server
             break;
 
         case ctrl_wnodes:
-            cout<<">server: recieved ctrl_wnodes from client, sending (1)queue_node_s\n";
+            dbg_2<<">server: recieved ctrl_wnodes from client, sending (1)queue_node_s\n";
             node_buffer.pop(ipc_qnode);
 
             connection_.wdata_type(dt_queue_node);
@@ -144,7 +145,7 @@ class dummy_server
             break;
 
         default:
-            cout<<">server: recieved unknown instruction "<<instruction<<" from client"<<endl;
+            dbg_2<<">server: recieved unknown instruction "<<instruction<<" from client"<<endl;
             break;
         }
     }
@@ -152,7 +153,7 @@ class dummy_server
     void write_complete(const boost::system::error_code& ec)
     {
         if(!ec) {
-            cout<<">server: write to client successful\n";
+            dbg_2<<">server: write to client successful\n";
         } else {
             throw ipc_exception("write_complete boost error: "+ec.message());
         }

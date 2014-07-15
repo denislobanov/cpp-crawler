@@ -12,7 +12,7 @@
 #include "debug.hpp"
 
 //total number of objects stored in cache
-#define CACHE_MAX   10
+#define CACHE_MAX   10*1024
 //TO DO: number of entries to keep free
 #define CACHE_RES   0
 //total cache size is thus CACHE_MAX - CACHE_RES

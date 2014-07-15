@@ -17,10 +17,20 @@
 #include "memory_mgr.hpp"
 #include "debug.hpp"
 
+//
 //Local defines
 #define CREDIT_TAX_PERCENT 10
 #define CREDIT_TAX_ALL 100
 
+//Time in *microseconds* between aborting crawls due to domain crawl_delay
+//before thread should start to implement sleep time. This stops thread from
+//spinning in situations where the work queue is dominatied by one (or few)
+//domains.
+#define TOO_MANY_RETRIES_TIME 1000
+
+using std::chrono::duration_cast;
+using std::chrono::microseconds;
+using std::chrono::seconds;
 
 //
 //public
@@ -88,6 +98,8 @@ void crawler_thread::thread() throw(std::underflow_error)
     };
     memory_mgr<page_data_c> page_mgr(page_mgr_cfg);
     memory_mgr<robots_txt> robots_mgr(robots_mgr_cfg);
+    std::chrono::system_clock::time_point last_backoff = std::chrono::system_clock::now();
+    microseconds sleep_time(TOO_MANY_RETRIES_TIME);
 
     while(thread_status > STOP) {
         try {
@@ -107,11 +119,11 @@ void crawler_thread::thread() throw(std::underflow_error)
             robots->configure(cfg.user_agent, root_url);
 
             //robots.txt checks
-            std::chrono::seconds robots_refresh_time(ROBOTS_REFRESH);
+            seconds robots_refresh_time(ROBOTS_REFRESH);
             std::chrono::system_clock::time_point now_time = std::chrono::system_clock::now();
 
-            if(std::chrono::duration_cast<std::chrono::seconds>
-                (now_time - robots->last_visit()) >= robots_refresh_time) {
+            if(duration_cast<seconds> (now_time - robots->last_visit())
+               >= robots_refresh_time) {
                 dbg<<"refreshing robots_txt\n";
                 robots->fetch(*netio_obj);
                 //robots last_visit time is updated automatically
@@ -133,27 +145,41 @@ void crawler_thread::thread() throw(std::underflow_error)
                 // *this* page has been crawled too often already (past 24hrs)
                 //then, we requeue the work order and get on with something
                 //else to avoid stalling.
-                if((std::chrono::duration_cast<std::chrono::seconds>
-                    (now_time - root_page->last_crawl) < robots->crawl_delay())
-                   and(page->crawl_count < cfg.day_max_crawls))
-                {
+                if((duration_cast<seconds>(now_time - root_page->last_crawl)
+                   >= robots->crawl_delay()) and (page->crawl_count < cfg.day_max_crawls)) {
+
                     //special case
-                    if(std::chrono::duration_cast<std::chrono::hours>
-                        (now_time - page->last_crawl) >= one_day) {
-                            
+                    if(duration_cast<std::chrono::hours> (now_time - page->last_crawl)
+                       >= one_day) {
                         dbg<<"page->last_visit > 24 hours, resetting count & crawling\n";
                         page->crawl_count = 0;
                     }
 
                     dbg<<"crawling page ["<<work_item.url<<"]\n";
                     crawl(work_item, page, robots);
+                    //reset to default
+                    sleep_time = microseconds(TOO_MANY_RETRIES_TIME);
+
                 } else {
                     dbg<<"page ["<<work_item.url<<"] has either been recently crawled or root domain ["<<root_url<<"] has recently been visited\n";
-                    dbg<<"crawl count: "<<page->crawl_count<<std::endl;
-                    dbg<<"root domain last crawl time: "<<std::chrono::system_clock::to_time_t(root_page->last_crawl)<<std::endl;
-                    dbg<<"delta to now: "<<std::chrono::duration_cast<std::chrono::seconds>
-                        (now_time - root_page->last_crawl).count()<<std::endl;
-                    dbg<<"crawl delay: "<<robots->crawl_delay().count()<<std::endl;
+                    dbg_2<<"crawl count: "<<page->crawl_count<<std::endl;
+                    dbg_2<<"root domain last crawl time: "<<std::chrono::system_clock::to_time_t(root_page->last_crawl)<<std::endl;
+                    dbg_2<<"delta to now: "<<duration_cast<seconds>(now_time - root_page->last_crawl).count()<<std::endl;
+                    dbg_2<<"crawl delay: "<<robots->crawl_delay().count()<<std::endl;
+
+                    //heuristic back-off
+                    if((duration_cast<seconds>(now_time - root_page->last_crawl)
+                       < robots->crawl_delay()) and (duration_cast<microseconds>
+                       (now_time - last_backoff) >= microseconds(TOO_MANY_RETRIES_TIME)))
+                    {
+                        sleep_time += duration_cast<microseconds>(seconds(1));
+
+                        if(duration_cast<seconds>(sleep_time) > robots_refresh_time) {
+                            sleep_time = duration_cast<microseconds>(robots_refresh_time);
+                        }
+                        dbg<<"upping backoff, sleep_time now "<<sleep_time.count()<<std::endl;
+                    }
+                    last_backoff = std::chrono::system_clock::now();
 
                     //re-queue page for later processing
                     ipc->send_item(work_item);
@@ -178,6 +204,7 @@ void crawler_thread::thread() throw(std::underflow_error)
 
             dbg<<">done.\n";
             thread_status = IDLE;
+            std::this_thread::sleep_for(sleep_time);
         } catch(std::underflow_error& e) {
             thread_status = ZOMBIE;
             std::cerr<<"ipc work queue underrun: "<<e.what()<<std::endl;
