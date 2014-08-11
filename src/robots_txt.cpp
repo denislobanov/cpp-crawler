@@ -15,13 +15,11 @@
 #include <fstream>
 #endif
 
-robots_txt::robots_txt(std::string user_agent, std::string root_domain, netio& netio_obj)
+robots_txt::robots_txt(std::string user_agent, std::string root_domain, netio* netio_object)
 {
-    configure(user_agent, root_domain);
+    configure(user_agent, root_domain, netio_object);
     process_param = false;  //set to true on matching user-agent by process instruction
     use_count = 0;
-
-    fetch(netio_obj);
 }
 
 robots_txt::robots_txt(void)
@@ -30,13 +28,14 @@ robots_txt::robots_txt(void)
     use_count = 0;
 }
 
-void robots_txt::configure(std::string user_agent, std::string root_domain)
+void robots_txt::configure(std::string user_agent, std::string root_domain, netio* netio_object)
 {
     agent_name = user_agent;
     domain = root_domain;
+    netio_obj = netio_object;
 }
 
-void robots_txt::fetch(netio& netio_obj)
+void robots_txt::fetch(void)
 {
     //(re)set defaults
     disallow_list.clear();
@@ -52,7 +51,7 @@ void robots_txt::fetch(netio& netio_obj)
                            std::istreambuf_iterator<char>());
 #else
     std::string temp_data;
-    netio_obj.fetch(&temp_data, domain+"/robots.txt");
+    netio_obj->fetch(&temp_data, domain+"/robots.txt");
 #endif
 
     parse(temp_data);

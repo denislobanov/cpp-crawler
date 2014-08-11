@@ -116,7 +116,7 @@ void crawler_thread::thread() throw(std::underflow_error)
             std::cout<<"root_url ["<<root_url<<"]\n";
 
             robots_txt* robots = robots_mgr.get_object_nblk(root_url);
-            robots->configure(cfg.user_agent, root_url);
+            robots->configure(cfg.user_agent, root_url, netio_obj);
 
             //robots.txt checks
             seconds robots_refresh_time(ROBOTS_REFRESH);
@@ -125,7 +125,7 @@ void crawler_thread::thread() throw(std::underflow_error)
             if(duration_cast<seconds> (now_time - robots->last_visit())
                >= robots_refresh_time) {
                 dbg<<"refreshing robots_txt\n";
-                robots->fetch(*netio_obj);
+                robots->fetch();
                 //robots last_visit time is updated automatically
             }
 

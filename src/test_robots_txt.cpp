@@ -10,7 +10,8 @@
 int main(void)
 {
     netio test_netio(USER_AGENT);
-    robots_txt my_robots_txt(USER_AGENT, "www.geeksaresexy.net", test_netio);
+    robots_txt my_robots_txt(USER_AGENT, "www.geeksaresexy.net", &test_netio);
+    my_robots_txt->fetch();
 
     //test crawl-delay
     std::cout<<"crawl delay: "<<my_robots_txt.crawl_delay().count()<<std::endl;

@@ -26,23 +26,23 @@ class robots_txt
     /**
      * creates a robots_txt parser instance.
      *
-     * netio used only during object creation and by optionall parser() call
+     * netio used only for fetch() call
      * crawler_name is needed to check "User-agent:" field of robots.txt
      * root_domain will have robots.txt appended automatically
      */
-    robots_txt(std::string user_agent, std::string root_domain, netio& netio_obj);
+    robots_txt(std::string user_agent, std::string root_domain, netio* netio_object);
     robots_txt(void);
 
     /**
      * set basic configuration parameters if void constructor was used,
      * in such case this method must be called.
      */
-    void configure(std::string user_agent, std::string root_domain);
+    void configure(std::string user_agent, std::string root_domain, netio* netio_object);
 
     /**
      * optional call to refresh current robots.txt profile
      */
-    void fetch(netio& netio_obj);
+    void fetch(void);
 
     /**
      * checks if path (usually url) is within the exclusion list
@@ -83,6 +83,7 @@ class robots_txt
     bool process_param;
     //used as a semaphre for freeing memory via memory_mgr - not serealized
     std::atomic<unsigned int> use_count;
+    netio* netio_obj;
 
     std::string agent_name;
     std::string domain;
